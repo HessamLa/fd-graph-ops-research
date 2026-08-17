@@ -200,6 +200,47 @@ def walk_rows(A, n: int, n_walks: int, walk_len: int, rng,
             "cnt": np.concatenate(cnts), "raw": raw}
 
 
+def with_neighbours_low_deg(stats, A, n: int):
+    """Every edge, stored ONE time, in the row of the lower-degree node.
+
+    The rule of 2026-08-17: for an edge `(u, v)`, `v` enters the row of `u`
+    only when `deg(v) >= deg(u)`. Thus a leaf keeps its edge to a hub, and
+    the hub does not keep the same edge in its own row. An edge between two
+    nodes of the same degree enters both rows.
+
+    The gain is the memory: an edge costs one entry and not two. At 1.13M
+    nodes that is 5,975,248 entries against 2,987,624.
+
+    The reason it is safe to drop the hub side: the row of a hub already
+    holds hundreds of partners, thus one more says little about where the
+    hub belongs. The row of a leaf holds few, thus every one of them
+    matters. The force stays reciprocal in the SUM over the graph, because
+    the leaf still pulls the hub through its own row.
+
+    A WARNING, and it is the reason `deg_source` exists in the caller: a
+    hub can now hold NO entry at `h = 1`. `degrees_from_D` counts the
+    entries at `h = 1`, thus it would return 0 for that row, and
+    `inv_deg_ext` turns a 0 into 0.0, which zeroes EVERY force of the row,
+    the repulsion too. The node would never move. The caller must therefore
+    give `make_plan` the true degree of `A`, and not the count of `D`.
+    """
+    c = sp.triu(A, k=1).tocoo()
+    deg = np.diff(A.indptr)
+    du, dv = deg[c.row], deg[c.col]
+    # (row, col) when deg(col) >= deg(row), and the other way when it is <=
+    keep_fwd = dv >= du
+    keep_bwd = du >= dv
+    src = np.concatenate([c.row[keep_fwd], c.col[keep_bwd]])
+    dst = np.concatenate([c.col[keep_fwd], c.row[keep_bwd]])
+    ekey = src.astype(np.int64) * n + dst.astype(np.int64)
+    key = np.concatenate([stats["key"], ekey])
+    mn = np.concatenate([stats["mn"], np.ones(ekey.size, np.int32)])
+    cnt = np.concatenate([stats["cnt"], np.ones(ekey.size, np.int32)])
+    k, mn, _sm, cnt = _reduce(key, mn, mn, cnt)
+    return {"key": k, "mn": mn, "cnt": cnt, "raw": stats.get("raw", 0),
+            "edges_kept": int(ekey.size)}
+
+
 def with_all_neighbours(stats, A, n: int):
     """Add EVERY edge of `A` at `h = 1`, and keep the walk pairs.
 

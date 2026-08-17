@@ -40,6 +40,16 @@ _ap.add_argument("--pairs", default="walk",
                       "holds EVERY neighbour of u at h=1, plus every node "
                       "that a walk FROM u reached, at h = the first step. "
                       "No cap, no window, and D is not symmetric.")
+_ap.add_argument("--edge-rule", default="both", choices=("both", "low_deg"),
+                 help="both = every edge in both rows; low_deg = an edge "
+                      "enters the row of u only when deg(v) >= deg(u), thus "
+                      "it costs one entry and not two")
+_ap.add_argument("--deg-source", default="auto", choices=("auto", "D", "A"),
+                 help="what `degrees_from_D` should be. D = count the h=1 "
+                      "entries of D (the package default). A = the true "
+                      "degree of the graph. `auto` picks A for low_deg, "
+                      "because a hub can then hold no h=1 entry and "
+                      "inv_deg_ext would zero every force of its row.")
 _ap.add_argument("--weight", default="min_gap",
                  choices=("flat", "min_gap", "mean_gap", "pmi"))
 _ap.add_argument("--optim", default="plain",
@@ -206,7 +216,8 @@ def build_D(A, n, rng):
         # The specification of 2026-08-17. Row u = every neighbour of u,
         # plus every node that a walk from u reached.
         st = W.walk_rows(A, n, args.walks, args.walk_len, rng)
-        st = W.with_all_neighbours(st, A, n)
+        st = (W.with_neighbours_low_deg(st, A, n) if args.edge_rule == "low_deg"
+              else W.with_all_neighbours(st, A, n))
         info["prunes"] = 0
         info["raw_pairs"] = int(st["raw"])
         info["unique_pairs"] = int(st["key"].size)
@@ -234,6 +245,26 @@ def build_D(A, n, rng):
             # directions, and the freq of a far pair is 1.
             cum = degree_table(A, args.far_bias)
             far = sample_far_pairs(n, args.far, near, rng, cum=cum)
+            # `sample_far_pairs` rejects on the DIRECTED key of `near`, and
+            # `near` is directed here, thus a pair stored as (v, u) does not
+            # reject (u, v). The CSR build then SUMS the two, and the weight
+            # becomes 100 + the walk gap. The histogram showed entries at
+            # 101..119. Drop any far pair that `near` already holds, in
+            # either direction.
+            if far.shape[0]:
+                nk = near.tocoo()
+                have = np.sort(nk.row.astype(np.int64) * n
+                               + nk.col.astype(np.int64))
+
+                def _absent(k):
+                    pos = np.searchsorted(have, k)
+                    pos[pos >= have.size] = 0
+                    return have[pos] != k
+
+                k1 = far[:, 0].astype(np.int64) * n + far[:, 1]
+                k2 = far[:, 1].astype(np.int64) * n + far[:, 0]
+                far = far[_absent(k1) & _absent(k2)]
+                del nk, have
             if far.shape[0]:
                 c = near.tocoo(); fc = freq.tocoo()
                 fw = np.full(2 * far.shape[0], args.far_weight)
@@ -373,6 +404,7 @@ class FDWalk(Fodined):
 
     freq = None
     no_deg_norm = False
+    deg_from_A = None
 
     def set_rule(self, name, lr, chunks=1, resident=True):
         self.rule = optimizers.RULES[name]
@@ -405,8 +437,15 @@ class FDWalk(Fodined):
         planes = (shell_coeff_data(self.D), self.D.data)
         if self.freq is not None:
             planes = planes + (self.freq,)
-        degrees = (np.ones(n, dtype=np.int64) if self.no_deg_norm
-                   else degrees_from_D(self.D))
+        if self.no_deg_norm:
+            degrees = np.ones(n, dtype=np.int64)
+        elif self.deg_from_A is not None:
+            # The true degree of the graph. `low_deg` can leave a hub with
+            # no entry at h=1, and `degrees_from_D` would then give 0, which
+            # `inv_deg_ext` turns into 0.0 and the row never moves.
+            degrees = self.deg_from_A
+        else:
+            degrees = degrees_from_D(self.D)
         self.params = dict(k1=K1, k2=K2, k3=K3, k4=K4, h_shift=H_SHIFT,
                            kr=args.kr, sign=args.fdlinear_sign)
 
@@ -631,6 +670,11 @@ log(f"embedding: dim={args.dim}, epochs={args.epochs}, optim={args.optim} "
     + (" on the host" if args.chunk_host else ""))
 fd = FDWalk(n_dim=args.dim, verbosity=0, seed=args.seed)
 fd.no_deg_norm = args.no_deg_norm
+_use_A = args.deg_source == "A" or (args.deg_source == "auto"
+                                    and args.edge_rule == "low_deg")
+fd.deg_from_A = np.maximum(np.diff(A.indptr), 1).astype(np.int64) if _use_A else None
+if _use_A:
+    log("degrees for the force law come from A, and not from the h=1 count of D")
 fd.freq = stats.get("freq").data if stats.get("freq") is not None else None
 fd.set_rule(args.optim, args.lr, args.chunks, not args.chunk_host)
 t0 = time.time()
@@ -698,5 +742,6 @@ print("[fdwalk] RESULT\t" + "\t".join(f"{k}={v}" for k, v in [
     ("far_bias", args.far_bias),
     ("kr", args.kr),
     ("degnorm", 0 if args.no_deg_norm else 1),
+    ("edge_rule", args.edge_rule),
     ("policy", args.policy),
     ("rss", f"{rss_mb():.0f}")]), flush=True)
