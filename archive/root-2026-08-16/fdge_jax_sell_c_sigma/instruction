@@ -1,0 +1,75 @@
+Include in @fdge_jax_sell_c_sigma/TODOS.md  
+
+Include JAX profiling (read https://docs.jax.dev/en/latest/profiling.html and research). Using an argument, the profiler should be turned on/off. Memory utilization, I/O, CPU/GPU/TPU utilization, etc are the metrics we are interested in.
+
+While you're at it, please also explore NetworKit https://networkit.github.io/dev-docs/python_api/modules.html
+
+## The complexity issue
+
+We need to do something about the O(n^2) complexity in graph augmentation.
+There are two modes of Force-directed graph embedding.
+
+1. **All-pairs force calculation**; In this mode, we calculate the forces between all nodes. Therefore, we need to calculate distance values between all (i,j) pairs, effectively generating a dense $n\times n$ matrix. In other words, we for a complete graph with n nodes, and assign the weight of each edge between nodes $u_i$ and $u_j$ with some distance function, $d(u_i, u_j)$. (D matrix or Hops matrix are effectively the same).
+2. **Some-pairs force calculation**; In this mode, we consider a subset of node pairs for force calculations. In other words, we add only a fraction of all possible edges during augmentation and assign the weight $d(u_i, u_j)$ to each corresponding new edge. The policy of which nodes to pair and make a new edge is determined in augmentation stage.
+
+**IMPORTANT:**
+
+Between the two modes above, we have seen that the **Some-pairs** mode has equal performance as **All-pairs** mode, while being much more memory efficient. This is the most important reason we want to adopt a sparse matrix mechanism. Nevertheless, we want to have boths modes available. **All-pairs** mode is much simpler, since it doesn't require a specialized node pairing policy and considers all node pairs to add new edges.
+
+Everything else regaridng the memory consumption MUST be designed or developed while considerin the two modes discussed above.
+
+**Al-pairs** and **Some-pairs** are only or this discussion. There should be better naming. If you have a better suggestion, please let me know. Otherwise, don't use these as names or file names.
+
+The current implementation already crashes at 100K nodes with OOM exception. We will figure out the best implemenation in the future. Include this in the TODO.
+
+### Some-pairs mode policies
+
+Some of the policies are discussed in [fdge_jax_sell_c_sigma/graph_augmenting/sparse_hops.py](fdge_jax_sell_c_sigma/graph_augmenting/sparse_hops.py). Other policies could also be designed and employed by the researcher. The `augment_graph()` method in `ForceDirected` class (`fdge_jax_sell_c_sigma/core/force_directed.py`) is prospected for this matter.
+
+Another policy that we will explore in the future is K-hop balls, and then adding edges between high-degree nodes or adding some edges between communities. K-hop ball method is adding edges between all node pairs that are at most K-hops away.
+
+---
+
+Moving `_levelwise_reach` into `sparse_hops.py` is a good idea. Add it to TODOS.
+
+Keep `_shell_counts_from_hops`
+
+`build_ladder` is fine. It is a one-time thing. Keep it.
+
+DO RIGHT NOW:
+The MST must be optimized. Run tests to verify functionality and speed of `sklearn.neighbors.kneighbors_graph` against the existing method. Finally, use the best method. Do the same for `knn_edges` vs `G.add_edges_from` and use the best approach.
+
+
+DO RIGHT NOW:
+Move these to the correct place
+`_shell_counts_from_hops`, `_shell_coeff_data`, `_degrees_from_D` to a file next to initialization, within embedding stage.
+
+DO NOW:
+"Engine core mixed with force law" Clean it up and place the blocks in the right position. — 
+
+DO NOW:
+`make_plan` and `_step` are pure SELL-C-sigma layout machinery, 
+
+DO NOW:
+SellCSigmaForce — agreed, it should not exist as-is
+
+IMPORTANT:
+
+"To change the force law, a researcher must edit a function that also contains the padding contract, lax.scan plumbing, and mode="drop" sentinel logic. That is the opposite of the intended research seam."
+
+Work on `fdge_jax_sell_c_sigma` directory. Make all the changes you see fit. 
+
+Fix self.Gx → self.G, add a test. Real bug, one line.
+Compact hop-value bins in _shell_counts_from_hops. Real O(n²), small fix.
+Extract force law out of _step (force_fn static arg + params pytree); move coefficient derivation beside it. Your main point.
+Dissolve SellCSigmaForce into a core cache helper + thin model wiring; delete the duplicate engine in EuclideanDistanceModel.
+Replace hopfill's BFS with scipy.sparse.csgraph.shortest_path; move _levelwise_reach into sparse_hops.py.
+Delete dead code (DropSteadyRate, get_shell_counts, global forces() singleton).
+Fix stale docstrings and the node_labels/target/label naming.
+Items 1, 2, and 5 are mechanical and independently verifiable. Items 3 and 4 are the structural ones and should be done together — they touch the same seam.
+
+## HOW TO DO:
+
+Make all your changes step by step. Verify the effect of each change. Make sure that the functionality is preseved, while other constraints are met. Use agentic development approach. Break down into smaller tasks. Assign simple tasks to Sonnet and complex ones to Opus agents. Verify the progress of each agent. If an agent's generation is not as expected, optimize the prompt and have it redo. 
+
+Log all your thought and the communications with the agents in a `fdge_jax_sell_c_sigma/logs/master.log` file. Prompts that are passed to agents must be logged. Also, have each agent log its own thoughts and hypotheses in its own log file `fdge_jax_sell_c_sigma/logs/subagent_<name or id>.log`
