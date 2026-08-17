@@ -388,7 +388,7 @@ def _step(Z, plan, inv_deg_ext, params, n, force_fn):
                  static, so a hyperparameter sweep against one ``D`` never
                  recompiles.
 
-    Everything around that call -- the ``/x`` projection onto ``diff``, the
+    Everything around that call -- the ``/x`` projection onto ``Zdiff``, the
     ``x == 0`` guard, the degree division, the drop of pad rows -- stays
     here, because it is layout, not physics. In particular the ``x == 0``
     guard is protecting the PADDING contract (pad cells have ``x`` exactly
@@ -409,7 +409,7 @@ def _step(Z, plan, inv_deg_ext, params, n, force_fn):
     adapted from the archive kernel's "exact zero on padding" contract):
     pad cells carry EVERY coefficient plane zeroed, so a force law built
     from those planes vanishes -- and their neighbor index is the row's own
-    node id, so ``diff = 0`` and ``x = 0`` too, which the guard below turns
+    node id, so ``Zdiff = 0`` and ``x = 0`` too, which the guard below turns
     into an exact zero contribution regardless of what ``force_fn``
     returned. That is deliberate double safety: a force law with a constant
     term would still contribute nothing on padding. Pad ROWS carry owner id
@@ -424,14 +424,14 @@ def _step(Z, plan, inv_deg_ext, params, n, force_fn):
             rows, nbrs, planes = batch[0], batch[1], batch[2:]
             Zc = Z[jnp.minimum(rows, n - 1)]             # (R, d) centers, ONE read/ROW
             Zj = Z[nbrs]                                 # (R, k, d) neighbors, one/CELL
-            diff = Zj - Zc[:, None, :]
-            x = jnp.sqrt(jnp.sum(diff * diff, axis=-1))  # (R, k)
+            Zdiff = Zj - Zc[:, None, :]
+            x = jnp.sqrt(jnp.sum(Zdiff * Zdiff, axis=-1))  # (R, k)
             x_safe = jnp.where(x == 0, 1.0, x)           # avoid /0 below
 
             F_mag = force_fn(x, planes, params)          # (R, k) -- the physics
             scale = jnp.where(x == 0, 0.0, F_mag / x_safe)
 
-            F = jnp.sum(diff * scale[..., None], axis=1)  # (R, d) dense k-axis reduce
+            F = jnp.sum(Zdiff * scale[..., None], axis=1)  # (R, d) dense k-axis reduce
             F = F * inv_deg_ext[rows][:, None]             # /deg, 0 for pad rows
             dZ = dZ.at[rows].add(F, mode="drop")           # per-ROW write; id n dropped
             return dZ, None
