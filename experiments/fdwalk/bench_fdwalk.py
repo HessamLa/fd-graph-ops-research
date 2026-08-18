@@ -53,7 +53,28 @@ _ap.add_argument("--deg-source", default="auto", choices=("auto", "D", "A"),
 _ap.add_argument("--weight", default="min_gap",
                  choices=("flat", "min_gap", "mean_gap", "pmi"))
 _ap.add_argument("--optim", default="plain",
-                 choices=("plain", "momentum", "nesterov", "adam", "fa2"))
+                 choices=("plain", "momentum", "nesterov", "adam", "fa2",
+                          "velocity", "sgd", "sqn"))
+_ap.add_argument("--p", type=float, default=1.0,
+                 help="node2vec return parameter. 1.0 = the uniform walk.")
+_ap.add_argument("--q", type=float, default=1.0,
+                 help="node2vec in-out parameter. q>1 is BFS-like, q<1 is "
+                      "DFS-like. 1.0 = the uniform walk.")
+_ap.add_argument("--row-cap", type=int, default=0,
+                 help="nbr_walk: keep the m most-visited partners of EACH "
+                      "ROW. Directed, and it gives every row one width "
+                      "(axis E-B). 0 = no row cap.")
+_ap.add_argument("--far-with-buckets", action="store_true",
+                 help="buckets: ALSO add n*log10(n) far pairs at weight "
+                      "--far-weight. Tests whether the hop R2 that buckets "
+                      "loses is a far-pair effect and not a policy effect.")
+_ap.add_argument("--eta", type=float, default=0.3,
+                 help="velocity: v = eta*dZ + (1-eta)*v0")
+_ap.add_argument("--sgd-frac", type=float, default=0.5,
+                 help="sgd: the fraction of rows that move in one epoch")
+_ap.add_argument("--sqn-memory", type=int, default=3,
+                 help="sqn: how many curvature pairs. Costs 2*m arrays of "
+                      "the shape of Z, plus 2 more.")
 _ap.add_argument("--seed", type=int, default=42)
 _ap.add_argument("--dim", type=int, default=128)
 _ap.add_argument("--epochs", type=int, default=2000)
@@ -217,21 +238,30 @@ def build_D(A, n, rng):
     info = {}
     t0 = time.time()
 
+    walker = W.make_walker(A, n, args.p, args.q)
+    info["walk_order"] = 1 if (args.p == 1.0 and args.q == 1.0) else 2
+
     if args.pairs == "nbr_walk":
-        # 2026-08-18: `nbr_walk` returns before the `--policy buckets`
-        # block below, thus a run that asked for `buckets` would get `cap`
-        # behaviour AND would record `policy=buckets` in its RESULT line.
-        # A mislabelled result is worse than a refused run, thus this stops.
-        if args.policy == "buckets":
-            _ap.error("--policy buckets is not implemented for --pairs "
-                      "nbr_walk: the nbr_walk path builds rows directly and "
-                      "never reaches the bucket sampler. Use --pairs walk or "
-                      "walk_edges, or implement the row-wise bucket rule.")
         # The specification of 2026-08-17. Row u = every neighbour of u,
         # plus every node that a walk from u reached.
-        st = W.walk_rows(A, n, args.walks, args.walk_len, rng)
+        st = W.walk_rows(A, n, args.walks, args.walk_len, rng, walker=walker)
+        # `--row-cap` bounds the WALK partners only, and it runs BEFORE the
+        # neighbours are added. The order is the contract of 2026-08-17: a
+        # neighbour is never dropped, thus the cap can only remove a node
+        # that a walk found. Capping after would break that contract in
+        # silence.
+        if args.row_cap:
+            info["walk_pairs_before_rowcap"] = int(st["key"].size)
+            st = W.row_cap(st, n, args.row_cap)
+            info["walk_pairs_after_rowcap"] = int(st["key"].size)
         st = (W.with_neighbours_low_deg(st, A, n) if args.edge_rule == "low_deg"
               else W.with_all_neighbours(st, A, n))
+        if args.policy == "buckets":
+            # The row-wise bucket rule, 2026-08-18. Until this existed the
+            # nbr_walk path returned before the bucket sampler and a run
+            # that asked for `buckets` silently got `cap`.
+            st, info["buckets"] = W.row_buckets(
+                st, A, n, args.bucket_total or BK.budget(n), rng)
         info["prunes"] = 0
         info["raw_pairs"] = int(st["raw"])
         info["unique_pairs"] = int(st["key"].size)
@@ -301,7 +331,8 @@ def build_D(A, n, rng):
         stats = W.walk_pair_stats(A, n, args.walks, args.walk_len,
                                   args.window, rng, cap=args.cap,
                                   prune_max=args.prune_max,
-                                  prune_factor=args.prune_factor)
+                                  prune_factor=args.prune_factor,
+                                  walker=walker)
     info["prunes"] = int(stats.get("prunes", 0))
     info["raw_pairs"] = int(stats["raw"])
     info["unique_pairs"] = int(stats["key"].size)
@@ -338,6 +369,27 @@ def build_D(A, n, rng):
         info["near_nnz"] = int(near.nnz)
         info["far_pairs"] = 0
         info["far_asked"] = 0
+        if args.far_with_buckets:
+            # 2026-08-18. `buckets` has NO far pairs by construction, and
+            # every measurement of this branch says the long-range term is
+            # what carries the hop R2. This option adds the far pairs back
+            # ON TOP of the bucket budget, thus it separates two causes that
+            # the policy confounds: does `buckets` lose the R2 because its
+            # stratification is wrong, or only because it has no far pairs?
+            nf = args.far or int(n * np.log10(max(n, 10)))
+            cum = degree_table(A, args.far_bias)
+            far = sample_far_pairs(n, nf, near, rng, cum=cum)
+            info["far_pairs"] = int(far.shape[0])
+            info["far_asked"] = nf
+            if far.shape[0]:
+                fw = np.full(far.shape[0], args.far_weight)
+                c = near.tocoo()
+                near = sp.csr_matrix(
+                    (np.concatenate([c.data, fw, fw]),
+                     (np.concatenate([c.row, far[:, 0], far[:, 1]]),
+                      np.concatenate([c.col, far[:, 1], far[:, 0]]))),
+                    shape=(n, n))
+                info["near_nnz"] = int(near.nnz)
         info["t_aug"] = time.time() - t0
         return near, stats, info
 
@@ -422,7 +474,11 @@ class FDWalk(Fodined):
     deg_from_A = None
 
     def set_rule(self, name, lr, chunks=1, resident=True):
-        self.rule = optimizers.RULES[name]
+        base = optimizers.RULES[name]
+        kw = {"velocity": {"eta": args.eta},
+              "sgd": {"frac": args.sgd_frac, "seed": args.seed},
+              "sqn": {"memory": args.sqn_memory}}.get(name)
+        self.rule = (functools.partial(base, **kw) if kw else base)
         self.opt_state = {}
         self.lr = lr
         self.n_chunks = max(1, chunks)
@@ -686,7 +742,8 @@ if info["far_pairs"] < info["far_asked"]:
         f"{info['far_asked']} asked for")
 
 log(f"embedding: dim={args.dim}, epochs={args.epochs}, optim={args.optim} "
-    f"({optimizers.STATE_ARRAYS[args.optim]} state arrays), lr={args.lr}, "
+    f"({optimizers.state_arrays(args.optim, args.sqn_memory)} state "
+    f"arrays), lr={args.lr}, "
     f"chunks={args.chunks}"
     + (" on the host" if args.chunk_host else ""))
 fd = FDWalk(n_dim=args.dim, verbosity=0, seed=args.seed)

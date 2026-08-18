@@ -1,0 +1,8 @@
+plain     state arrays final ||dZ|| avg 2.681395 auc=0.9957 r2_dist=0.373 
+velocity  state arrays final ||dZ|| avg 4.882606 auc=0.9933 r2_dist=0.356 
+sgd       state arrays final ||dZ|| avg 5.830705 auc=0.9873 r2_dist=0.268 
+sqn       state arrays final ||dZ|| avg 3.809079 auc=0.9956 r2_dist=0.357 
+momentum  state arrays final ||dZ|| avg 15193.339844 auc=0.9248 r2_dist=0.117 
+nesterov  state arrays final ||dZ|| avg 223.323502 auc=0.9815 r2_dist=0.157 
+adam      state arrays final ||dZ|| avg 91.515381 auc=0.6909 r2_dist=-0.010 
+fa2       state arrays 

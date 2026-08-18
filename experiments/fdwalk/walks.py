@@ -92,7 +92,8 @@ def _reduce(key, mn, sm, cnt):
 
 def walk_pair_stats(A, n: int, n_walks: int, walk_len: int, window: int, rng,
                     block: int = 50_000, cap: int = 0,
-                    prune_factor: int = 4, prune_max: int = 4_000_000):
+                    prune_factor: int = 4, prune_max: int = 4_000_000,
+                    walker=None):
     """The statistics of every pair that a walk gives. Returns a dict.
 
     The keys of the dict are `key`, `mn`, `sm`, `cnt`, `raw` (how many pairs
@@ -125,12 +126,13 @@ def walk_pair_stats(A, n: int, n_walks: int, walk_len: int, window: int, rng,
     # a million nodes. A gap is below `window`, a sum of gaps is below
     # `count * window`, and a count is small. All three are int32, thus one
     # pair costs 20 bytes and not 28.
+    walker = walker or (lambda st, L, r: uniform_walks(A, st, L, r))
     acc = (np.empty(0, np.int64), np.empty(0, np.int32),
            np.empty(0, np.int32), np.empty(0, np.int32))
     raw, prunes = 0, 0
     starts_all = np.tile(np.arange(n, dtype=np.int64), n_walks)
     for s in range(0, starts_all.size, block):
-        w = uniform_walks(A, starts_all[s:s + block], walk_len, rng)
+        w = walker(starts_all[s:s + block], walk_len, rng)
         key, gap = _pairs_of(w, window, n)
         raw += key.size
         acc = _reduce(
@@ -148,7 +150,7 @@ def walk_pair_stats(A, n: int, n_walks: int, walk_len: int, window: int, rng,
 
 
 def walk_rows(A, n: int, n_walks: int, walk_len: int, rng,
-              block: int = 20_000):
+              block: int = 20_000, walker=None):
     """Row `u` holds EVERY node that a walk FROM `u` reached.
 
     This is the augmentation that the specification of 2026-08-17 asks for:
@@ -176,12 +178,13 @@ def walk_rows(A, n: int, n_walks: int, walk_len: int, rng,
     reached that node, which `weights.py` and the `fdlinear` force read as
     the frequency of the node in the walks of that row.
     """
+    walker = walker or (lambda st, L, r: uniform_walks(A, st, L, r))
     keys, mns, cnts = [], [], []
     raw = 0
     for s in range(0, n, block):
         e = min(s + block, n)
         starts = np.repeat(np.arange(s, e, dtype=np.int64), n_walks)
-        w = uniform_walks(A, starts, walk_len, rng)
+        w = walker(starts, walk_len, rng)
         # column t of the walk is t steps from the start
         src = np.repeat(w[:, 0], walk_len - 1)
         dst = w[:, 1:].ravel()
@@ -329,3 +332,201 @@ def to_csr(key, h, n: int):
     return sp.csr_matrix(
         (np.concatenate([h, h]),
          (np.concatenate([u, v]), np.concatenate([v, u]))), shape=(n, n))
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-18 -- the directed cap, the row-wise bucket rule, and the real
+# node2vec walk. See TODOs.md and CATALOG.md.
+# ---------------------------------------------------------------------------
+def row_cap(stats, n: int, m: int):
+    """Keep the `m` most-visited partners of EACH ROW. Directed.
+
+    This is the directed form of `cap_per_node`, and the two differ in a
+    way that decides the layout of the plan:
+
+        cap_per_node  a pair survives if EITHER endpoint keeps it, thus a
+                      row can hold MORE than `m` and a hub collects many.
+        row_cap       row `u` holds exactly its own best `m`, thus EVERY
+                      row has the same width.
+
+    The second is axis E-B of PLAN.md, and the payoff is in the plan and
+    not only in `D`: no hub split (`n_split` -> 0), little padding, balanced
+    batches, and an exact bound of `n * m` cells.
+
+    It runs on the output of `walk_rows`, which is ALREADY directed and
+    row-disjoint, thus no direction has to be recovered and no accumulator
+    is doubled. `_pairs_of` cannot be used for this: it collapses the
+    direction at the source with the key `min*n + max`.
+    """
+    if m <= 0 or stats["key"].size == 0:
+        return stats
+    row = (stats["key"] // n).astype(np.int64)
+    order = np.lexsort((-stats["cnt"].astype(np.int64), row))
+    row_s = row[order]
+    first = np.ones(row_s.size, dtype=bool)
+    first[1:] = row_s[1:] != row_s[:-1]
+    starts = np.flatnonzero(first)
+    glen = np.diff(np.append(starts, first.size))
+    rank = np.arange(row_s.size, dtype=np.int64) - np.repeat(starts, glen)
+    keep = np.sort(order[rank < m])
+    return {k: (v[keep] if isinstance(v, np.ndarray) else v)
+            for k, v in stats.items()}
+
+
+def row_buckets(stats, A, n: int, total: int, rng,
+                fractions=(0.50, 0.25, 0.25)):
+    """The bucket policy, on the DIRECTED rows of `walk_rows`.
+
+    `buckets.bucket_sample` works on an undirected pair list. This is the
+    same rule on directed rows, and it keeps the three properties that make
+    the policy what it is:
+
+    1. Every entry at `h = 1` stays. The budget applies to `h >= 2` only.
+    2. The budget is GLOBAL, and not per row.
+    3. A short bucket is not topped up from another.
+
+    `walk_rows` gives `h` in `mn`, thus the strata read from `mn` directly
+    and no hop distance has to be recomputed.
+    """
+    h = stats["mn"]
+    near = h <= 1
+    far = np.flatnonzero(h >= 2)
+    groups = (far[h[far] == 2], far[h[far] == 3], far[h[far] >= 4])
+    want = [int(round(total * f)) for f in fractions]
+    keep, report = [np.flatnonzero(near)], []
+    for name, idx, w in zip(("h=2", "h=3", "h>=4"), groups, want):
+        take = idx if idx.size <= w else rng.choice(idx, w, replace=False)
+        keep.append(take)
+        report.append({"bucket": name, "available": int(idx.size),
+                       "asked": int(w), "taken": int(take.size)})
+    sel = np.sort(np.concatenate(keep))
+    out = {k: (v[sel] if isinstance(v, np.ndarray) else v)
+           for k, v in stats.items()}
+    return out, report
+
+
+def _edge_keys(A, n: int):
+    """`row * n + col` for every stored edge, GLOBALLY sorted.
+
+    A scipy CSR with sorted indices gives rows in order and columns sorted
+    inside a row, thus this array is sorted as a whole and one vectorized
+    `searchsorted` answers "is `x` a neighbour of `t`" for a whole batch.
+    That is what replaces node2vec's per-edge alias tables.
+    """
+    A = A.tocsr()
+    A.sort_indices()
+    rows = np.repeat(np.arange(A.shape[0], dtype=np.int64),
+                     np.diff(A.indptr))
+    return rows * n + A.indices.astype(np.int64)
+
+
+def node2vec_walks(A, starts, walk_len: int, rng, p: float = 1.0,
+                   q: float = 1.0, ekeys=None, max_tries: int = 20):
+    """The SECOND-ORDER walk of node2vec [4], by rejection sampling.
+
+    The transition from `v`, having come from `t`, to a candidate `x` has
+    the unnormalised weight
+
+        1/p   if x == t          (return to where the walk came from)
+        1     if x is adjacent to t
+        1/q   otherwise          (move away)
+
+    `p` is the return parameter and `q` is the in-out parameter. `q > 1`
+    keeps the walk near `t`, which is BFS-like; `q < 1` sends it away,
+    which is DFS-like.
+
+    **The correctness gate, and it is DISTRIBUTIONAL and not bit-exact.**
+    At `p = q = 1` every weight is 1, thus `w_max` is 1, thus the accept
+    test `rng.random() * w_max < w` never fails and the candidate is a
+    plain uniform draw from the neighbour list. The walk therefore has the
+    SAME DISTRIBUTION as `uniform_walks`. It is NOT the same array: the
+    rejection loop draws one extra random number for each accept test, thus
+    the two functions consume the random stream differently and the same
+    seed gives different walks. A first version of this test asserted array
+    equality and failed for exactly that reason; the gate is a
+    distributional comparison over many walks.
+
+    **Why rejection sampling, and not the alias tables of the reference
+    implementation.** An alias table for each EDGE costs `sum(deg^2)`.
+    com_youtube holds a node of degree 28,754, thus that node alone
+    contributes 827 million entries, and the tables are not an option at
+    1.13M nodes. Rejection sampling needs NO preprocessing: draw a
+    neighbour uniformly, accept it with probability `w(x) / w_max`, repeat.
+    The expected number of draws is `w_max / w_mean`, which is a small
+    constant for any reasonable `p` and `q`.
+
+    The one test the method needs -- "is `x` adjacent to `t`" -- is one
+    vectorized `searchsorted` into the globally sorted edge keys, thus it
+    is `O(log nnz)` for a whole batch and it holds one int64 array of
+    `nnz`.
+
+    A walk that does not get an acceptance inside `max_tries` keeps its
+    last uniform draw. That is a bias, it is bounded by
+    `(1 - w_min/w_max)^max_tries`, and at the default it is below 1e-6 for
+    every `p, q` in [0.25, 4].
+    """
+    deg = np.diff(A.indptr)
+    if ekeys is None:
+        ekeys = _edge_keys(A, A.shape[0])
+    n = A.shape[0]
+    cur = np.asarray(starts, dtype=np.int64)
+    walks = np.empty((cur.size, walk_len), dtype=np.int64)
+    walks[:, 0] = cur
+    if walk_len < 2:
+        return walks
+    # step 1 is first-order: there is no previous node yet
+    d = deg[cur]
+    off = (rng.random(cur.size) * np.maximum(d, 1)).astype(np.int64)
+    nxt = A.indices[A.indptr[cur] + off]
+    prev, cur = cur, np.where(d > 0, nxt, cur)
+    walks[:, 1] = cur
+
+    w_max = max(1.0 / p, 1.0, 1.0 / q)
+    for t in range(2, walk_len):
+        d = deg[cur]
+        live = d > 0
+        acc = np.zeros(cur.size, dtype=bool)
+        pick = cur.copy()
+        for _ in range(max_tries):
+            todo = live & ~acc
+            if not todo.any():
+                break
+            idx = np.flatnonzero(todo)
+            off = (rng.random(idx.size) * d[idx]).astype(np.int64)
+            x = A.indices[A.indptr[cur[idx]] + off]
+            # the three cases of the node2vec weight
+            w = np.full(idx.size, 1.0 / q)
+            back = x == prev[idx]
+            w[back] = 1.0 / p
+            if q != 1.0:
+                key = prev[idx].astype(np.int64) * n + x.astype(np.int64)
+                pos = np.searchsorted(ekeys, key)
+                hit = (pos < ekeys.size) & (ekeys[np.minimum(
+                    pos, ekeys.size - 1)] == key)
+                w[hit & ~back] = 1.0
+            ok = rng.random(idx.size) * w_max < w
+            pick[idx[ok]] = x[ok]
+            pick[idx[~ok]] = x[~ok]        # keep the last draw as fallback
+            acc[idx[ok]] = True
+        prev, cur = cur, np.where(live, pick, cur)
+        walks[:, t] = cur
+    return walks
+
+
+def make_walker(A, n: int, p: float = 1.0, q: float = 1.0):
+    """A walk function `(starts, walk_len, rng) -> walks`, first or second order.
+
+    At `p = q = 1` it returns `uniform_walks` ITSELF, and not the rejection
+    sampler with trivial weights. Two reasons, and both matter: the uniform
+    walk is faster, and every result recorded before 2026-08-18 used it,
+    thus a run at the default reproduces those numbers exactly rather than
+    only distributionally.
+
+    Above `p = q = 1` the edge keys are built ONE time here and reused for
+    every block, thus the `O(nnz)` int64 array is paid once for the whole
+    augmentation and not once for each block.
+    """
+    if p == 1.0 and q == 1.0:
+        return lambda starts, L, rng: uniform_walks(A, starts, L, rng)
+    ek = _edge_keys(A, n)
+    return lambda starts, L, rng: node2vec_walks(A, starts, L, rng, p, q, ek)
