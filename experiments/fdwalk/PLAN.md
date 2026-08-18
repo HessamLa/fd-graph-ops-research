@@ -434,3 +434,42 @@ that.
 5. **One machine.** 3 GB of free RAM and a 2 GB card. A negative result at
    1M is a result about THIS machine, and the report must say the size that
    the method needs, and not only that it did not fit.
+
+---
+
+## UPDATE 2026-08-17T23:25 -- the noise floor moves from 2% to 1%
+
+**Reason.** `experiments/fdwalk/CLAUDE.md`, written by the user on
+2026-08-17 at 23:19, states "A gain of 1% or less is noise". This
+supersedes the rule of 2% recorded above at 2026-08-16 00:20 PDT.
+**The 2% text above is NOT removed**, because every result recorded before
+this timestamp was judged against it, and a reader must see the rule that
+each verdict used.
+
+**The rule now.** A gain counts only if it passes BOTH `delta/old > 1%`
+AND `delta > the spread across seeds`. The second half does not change: a
+difference above the floor is still noise when it is smaller than the
+seed spread.
+
+**Adopted at:** every measurement from 2026-08-17T23:19 forward.
+
+**Which recorded verdicts the change could flip.** A claim that was
+rejected with a MEASURED number outside 1..2% does not move. A claim
+rejected as "inside 2%" with no number recorded must be re-checked before
+it is quoted again.
+
+| Verdict | Number | 2% | 1% | Status |
+| --- | --- | --- | --- | --- |
+| node2vec AUC against `nbr_walk` at dim 64 | +0.14% | noise | noise | holds, a TIE |
+| 100% adjacency repairs the 0.90 AUC | +0.4% | noise | noise | holds, refuted |
+| `walk` against `walk_edges`, Cora | +0.02% | noise | noise | holds, a tie |
+| far pairs at `deg^0.75` | +3.9% AUC | real | real | holds |
+| `low_deg` costs the hop R2 | -64% | real | real | holds |
+| fused planes, peak RSS | -8.9% | real | real | holds |
+| landmarks | no gain in any metric | noise | noise | holds, rejected |
+| **the bucket policy, `v2`, `fdlinear` at k4=1.0** | **recorded only as "inside 2%"** | noise | **UNKNOWN** | **must be re-checked before it is quoted** |
+
+The last row is the only open item of this update. Three claims were
+written without the number that produced them, thus the tighter floor
+cannot be applied to them from the document alone. The runs exist in
+`results/`, thus the re-check is arithmetic and not a new experiment.

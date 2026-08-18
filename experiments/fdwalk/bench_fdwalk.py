@@ -109,6 +109,10 @@ _ap.add_argument("--no-deg-norm", action="store_true",
                  help="pass degrees=1 to make_plan, thus the engine does NOT "
                       "divide the row sum by deg1(u). fdlinear needs this to "
                       "be the law that its specification writes.")
+_ap.add_argument("--fuse-planes", action="store_true",
+                 help="fdlinear: carry ONE plane w = h/freq (-1 at h=1) "
+                      "instead of the pair. Same law, ~20%% less memory; "
+                      "h/freq becomes build-time. See force_fdlinear.py.")
 _ap.add_argument("--force", default="v1", choices=("v1", "v2", "fdlinear"),
                  help="v1 = the law of the package; v2 = the off-branch law, "
                       "with a constant repulsion for h > 1")
@@ -163,7 +167,8 @@ import weights as WT
 # The force constants of `fodined/modular.py`. They do not change here: this
 # experiment moves the augmentation, thus the physics must stay fixed.
 FORCE_FN = {"v1": shell_force, "v2": force_offbranch.shell_force_v2,
-            "fdlinear": force_fdlinear.fdlinear}[args.force]
+            "fdlinear": (force_fdlinear.fdlinear_fused if args.fuse_planes
+                         else force_fdlinear.fdlinear)}[args.force]
 
 K1, K2, K3, K4 = args.k1, 1.0, args.k3, args.k4
 RANDOM_DROP_RATE = 0.5
@@ -403,6 +408,7 @@ class FDWalk(Fodined):
     """`Fodined` with the plan of `modular.py` and a chosen update rule."""
 
     freq = None
+    fused = None
     no_deg_norm = False
     deg_from_A = None
 
@@ -434,9 +440,15 @@ class FDWalk(Fodined):
         """
         self.D = G
         n = self.D.shape[0]
-        planes = (shell_coeff_data(self.D), self.D.data)
-        if self.freq is not None:
-            planes = planes + (self.freq,)
+        # `shell_coeff` goes to the plan ONLY for a law that reads it.
+        # 2026-08-17: `fdlinear` never did, and building it cost an nnz
+        # array, a padded tile, and the transients of `shell_counts`.
+        if self.fused is not None:
+            planes = (self.fused,)
+        elif self.freq is not None:
+            planes = (self.D.data, self.freq)
+        else:
+            planes = (shell_coeff_data(self.D), self.D.data)
         if self.no_deg_norm:
             degrees = np.ones(n, dtype=np.int64)
         elif self.deg_from_A is not None:
@@ -675,7 +687,25 @@ _use_A = args.deg_source == "A" or (args.deg_source == "auto"
 fd.deg_from_A = np.maximum(np.diff(A.indptr), 1).astype(np.int64) if _use_A else None
 if _use_A:
     log("degrees for the force law come from A, and not from the h=1 count of D")
-fd.freq = stats.get("freq").data if stats.get("freq") is not None else None
+# The `freq` plane goes to the plan ONLY for a force law that reads it.
+# `shell_force` of the package unpacks exactly two planes, thus a third one
+# stops it with "too many values to unpack".
+fd.freq = (stats["freq"].data
+           if args.force == "fdlinear" and stats.get("freq") is not None
+           else None)
+if args.fuse_planes:
+    if fd.freq is None:
+        _ap.error("--fuse-planes needs --force fdlinear and a freq plane")
+    # The degree MUST come from the intact `h`, thus it is read here,
+    # before `h` and `freq` collapse into `w`. `degrees_from_D` counts the
+    # h == 1 entries of a row, and `w` keeps only their SIGN.
+    if fd.deg_from_A is None:
+        fd.deg_from_A = degrees_from_D(D)
+    fd.fused = force_fdlinear.fuse(D.data, fd.freq)
+    fd.freq = None
+    stats["freq"] = None                    # free the CSR before the plan
+    log(f"fused plane: 1 plane of {fd.fused.nbytes / 1e6:.1f} MB replaces "
+        f"h + freq + shell_coeff")
 fd.set_rule(args.optim, args.lr, args.chunks, not args.chunk_host)
 t0 = time.time()
 fd.embed(D, epochs=args.epochs, batch_count=args.chunks)

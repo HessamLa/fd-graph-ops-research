@@ -1,6 +1,6 @@
 # fdwalk
 
-Created: 2026-08-15. Last updated: 2026-08-16 23:25 PDT.
+Created: 2026-08-15. Last updated: 2026-08-17 22:55 PDT.
 
 Random walks make the pairs of the augmented graph, and a property of the
 walk makes the weight of each pair.
@@ -23,6 +23,8 @@ fdwalk keeps the force law of fodined and it replaces only the augmentation.
 | File | Content |
 | --- | --- |
 | `PLAN.md` | the design, the 7 hypotheses, the variants, the gates, and the rules to stop |
+| `CATALOG.md` | the catalog of the named entities: force functions, augmentation policies, weights, optimizers, layout, protocol. Added 2026-08-17. |
+| `log/` | the timestamped work log, in four files: `2026-08-15T231648`, `2026-08-16T0020`, `2026-08-17T043000` (written after the fact, to close a gap), `2026-08-17T225332`. The file names sort chronologically. |
 | `FINDINGS.md` | the results. It starts with the baselines and the probe that started the work |
 | `REFERENCES.md` | the citations, with a note on what each one gives us |
 

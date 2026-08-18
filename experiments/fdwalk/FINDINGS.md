@@ -590,3 +590,214 @@ is what would establish it.
 | 2026-08-15 | `walk_edges` stops, and `walk` continues. | They are one variant inside the noise, and `walk` is the cheaper one. The option stays in the code for a graph with more low-degree nodes. |
 | 2026-08-15 | G2 runs walk/min_gap, ball/min_gap, and walk/flat. | The winner, the control of H4, and the control of H3. |
 | 2026-08-15 | The ball stops, at every gate. Only the walk continues. | Decision of the user. The ball needs 50 GB at k=2 on com_youtube and 1 TB at k=3, and the size follows the degree of the hubs, thus no budget reaches it. H4 closes as "not measured, and not needed": the ball is out for the reason that H4 was written to test. `--pairs ball` stays in the code as the control of the small graphs. |
+
+---
+
+# UPDATE 2026-08-17T22:53:32-07:00 -- the node2vec baseline, at an equal dimension
+
+**Reason for the update.** Every comparison against node2vec in this
+document above used the dim-128 baseline, because that was the only one in
+hand, while our runs were at dim 64. The difference was stated as a caveat
+only, and a caveat is not sufficient: the comparison was not at an equal
+dimension, thus it was not a comparison. **Nothing above is removed.** The
+statements above stay, with this entry as their correction.
+
+**Adopted at:** the mix-and-match step, com_youtube, 1,134,890 nodes.
+
+The baseline is re-run at dim 64, holding everything else: 5 walks x 20
+steps, window 5, 3 epochs, seed 42, and `--lp-pairs 25000` so that both
+sides score 50,000 link-prediction pairs.
+
+| stage / metric | node2vec d64 | nbr_walk/both d64 | walk_edges d64 |
+| --- | --- | --- | --- |
+| load | 2.1 s | 3.1 s | 3.1 s |
+| walk / augmentation | 28.6 s | 28.9 s | 571.8 s |
+| train / embed | 854.7 s | 512.1 s | 465.1 s |
+| **total wall** | **17:01** | **12:20** | ~18:30 |
+| **peak RSS** | **1382 MB** | 4799 MB | 3451 MB |
+| accuracy | 0.9750 | 0.9764 | 0.9658 |
+| F1 | 0.9753 | 0.9760 | 0.9652 |
+| AUC | 0.9964 | **0.9978** | 0.9954 |
+| hop R2 | 0.042 | **0.436** | 0.420 |
+
+**What changes.**
+
+1. **Link prediction is a TIE.** 0.9978 against 0.9964 is +0.14%, inside
+   the 2% floor. The direction also flipped: at dim 128 node2vec led with
+   0.9984, at dim 64 we lead. Neither difference is meaningful. The correct
+   statement is "indistinguishable", and it REPLACES "node2vec wins link
+   prediction" wherever that appears above.
+2. **The hop distance holds, and it is the one result with no
+   reservation.** 0.436 against 0.042 is a factor of 10.4, on an identical
+   protocol: the same sources, the same pairs, the same `hop > 1` filter,
+   the same single scalar feature.
+3. **Memory is now the only axis where node2vec clearly wins**, 1382 MB
+   against 4799 MB, a factor of 3.5. Its corpus streams from the disk; our
+   `D` stays in the RAM.
+
+**A number that must NOT be quoted as precise.** node2vec's dim-64 training
+took 854.7 s against 732.5 s at dim 128. That is backwards, because fewer
+dimensions is less work for each token. Both are single runs on a machine
+that was busy. I read it as variance, thus the 27% advantage in the wall
+clock rests on one noisy baseline.
+
+---
+
+# UPDATE 2026-08-17T22:55 -- the plane count of fdlinear
+
+**Reason.** The memory gap of 3.5x above is the open item, and the first
+part of it is waste, not physics. `fdlinear` bound a `shell_coeff` plane
+and never read it. At `nnz = 23,163,843` and `pad_frac = 0.154` (27.38 M
+padded slots) one plane costs 92.7 MB as a host array and 109.5 MB as a
+packed tile, and `shell_coeff_data` also allocates about 460 MB of nnz-
+sized int64 transient inside `shell_counts`, `row_of` and `searchsorted`.
+
+**Two changes, both at 2026-08-17.**
+
+1. `shell_coeff_data` is built ONLY for a law that reads it. `fdlinear`
+   now takes `(h, freq)`.
+2. `fdlinear_fused`, behind `--fuse-planes`, takes ONE plane
+   `w = h/freq`, with `w = -1` as the sentinel for `h = 1`. See
+   `CATALOG.md` 1.4 for why the sentinel is load-bearing: a plain
+   `h/freq` cannot separate `h=1, freq=3` from `h=2, freq=6`, and the
+   attraction would fire on the wrong cells with no error raised.
+
+**Predicted saving at 1.13 M, steady: 1167 MB -> 387 MB**, plus about
+460 MB of transient peak. Against a measured peak of 4799 MB that is about
+20%. **It does not close the gap to node2vec**: the augmentation stage
+alone holds 3512 MB before the plan is built.
+
+**Verified identical on Cora** (`nbr_walk/min_gap`, dim 64, 200 epochs,
+lr 1.0, seed 42): `||dZ||` 0.5016, accuracy 0.9754, F1 0.9752, AUC 0.9962,
+hop R2 0.253, hop MAE 1.291 -- every embedding-derived metric matches the
+3-plane reference exactly. Peak RSS 1004 MB against 1010 MB; Cora is too
+small for the saving to show.
+
+**The 1.13 M measurement is running at the time of this entry.** The result
+is appended below when it lands, and not predicted here.
+
+## The 1.13 M measurement, 2026-08-17T23:10
+
+com_youtube, 1,134,890 nodes, `nbr_walk/both`, `min_gap`, `fdlinear`,
+dim 64, 500 epochs, lr 0.1, k4 1.0, kr 1.0, far 2.27 M at `deg^0.75`,
+8 chunks on the host, seed 42. The configuration is the baseline's, and
+only `--fuse-planes` is added.
+
+| | 3 planes | fused | change |
+| --- | --- | --- | --- |
+| t_aug | 28.9 s | 22.1 s | -23.5% |
+| t_embed | 512.1 s | 463.0 s | -9.6% |
+| **wall clock** | 12:20 | **11:20** | -8.1% |
+| **peak RSS** | 4799 MB | **4374 MB** | **-425 MB, -8.9%** |
+| final \|\|dZ\|\| | 0.049724 | 0.049724 | identical |
+| accuracy | 0.9764 | 0.9764 | identical |
+| F1 | 0.9760 | 0.9760 | identical |
+| AUC | 0.9978 | 0.9978 | identical |
+| hop R2 | 0.436 | 0.436 | identical |
+| hop MAE | 0.755 | 0.755 | identical |
+
+**Correctness: settled.** `||dZ||` agrees to six decimals and every
+embedding-derived metric is identical at both 2,708 and 1,134,890 nodes.
+The sentinel is sound.
+
+**Memory: real, and I over-predicted it by 1.8x.** The prediction in the
+entry above was about 780 MB of steady saving; the measurement is 425 MB.
+The prediction assumed that freeing the `freq` CSR lowers the RSS. It does
+not, reliably: the RSS is a HIGH-WATER mark, and a Python free returns
+memory to the allocator and not always to the OS. What the measurement
+does confirm is the part that is never allocated at all -- the dead
+`shell_coeff` plane, its tile, and the transients of `shell_counts`.
+
+**Speed: NOT established, and it must not be quoted.** The embed time fell
+9.6%, which passes the 2% floor. But `t_aug` fell 23.5% on a code path
+that is byte-identical between the two runs. Thus the machine carried at
+least 23% of timing variance today, and the 9.6% sits inside it. A
+mechanism exists -- `--chunk-host` moves the plan to the device for every
+use, thus 1 plane moves a third of what 3 planes move -- and one run at one
+seed does not measure it. It stays open.
+
+**What it does not do.** node2vec holds 1382 MB. We now hold 4374 MB, a
+factor of 3.2 against 3.5. The augmentation stage alone reports 3583 MB
+before the plan is built, thus the remaining memory is in `D` and in the
+walk stage, and no change to the plane count reaches it.
+
+**Adopted:** `--fuse-planes` is verified and available. It is NOT the
+default, for the reason in `CATALOG.md` 1.4: `h/freq` becomes a build-time
+quantity, and the law is still moving.
+
+---
+
+# The mix-and-match grid, 2026-08-17 (entered 2026-08-17T23:45)
+
+**Why this section is entered late.** The grid ran on 2026-08-17 from about
+04:30, and it was reported to the user and never written here. The rule of
+`experiments/fdwalk/CLAUDE.md` is to update this document with each new and
+meaningful finding, thus the omission is a defect. Nothing above is
+changed. Source: `results/mixmatch/`, and the log
+[log/2026-08-17T043000.md](log/2026-08-17T043000.md).
+
+The grid is a CROSS of the axes, by instruction: 2 force laws x 3
+configurations x 3 seeds = 18 runs. Cora, dim 64, 2000 epochs, far pairs at
+`deg^0.75`. The spread is the half-range over the seeds.
+
+| force | pairs | rule | AUC | accuracy | R2 dist |
+| --- | --- | --- | --- | --- | --- |
+| fdlinear | nbr_walk | both | **0.9989 ±.0002** | **0.9853 ±.0021** | 0.668 ±.012 |
+| v1 | nbr_walk | both | 0.9979 ±.0001 | 0.9785 ±.0031 | 0.572 ±.046 |
+| fdlinear | walk_edges | both | 0.9967 ±.0005 | 0.9770 ±.0040 | **0.677 ±.012** |
+| v1 | walk_edges | both | 0.9969 ±.0006 | 0.9749 ±.0007 | 0.445 ±.019 |
+| fdlinear | nbr_walk | low_deg | 0.9969 ±.0007 | 0.9724 ±.0007 | 0.345 ±.064 |
+| v1 | nbr_walk | low_deg | 0.9948 ±.0008 | 0.9683 ±.0024 | 0.395 ±.077 |
+
+## Finding: `fdlinear` buys the geometry, and not the link prediction
+
+Every `both` row sits in AUC 0.9967..0.9989, a band of 0.22%. That is noise
+at the floor of 2%, and it stays noise at the floor of 1%. **The force law
+does not decide the link prediction on Cora.**
+
+The hop R2 separates, and the test is the delta against the SEED SPREAD and
+not the percentage alone:
+
+| policy | fdlinear | v1 | delta | against the larger spread | verdict |
+| --- | --- | --- | --- | --- | --- |
+| `walk_edges/both` | 0.677 | 0.445 | +52.2% | 0.232 against 0.037, a factor of 6 | **real** |
+| `nbr_walk/both` | 0.668 | 0.572 | +16.7% | 0.096 against 0.091 | **real, MARGINAL** |
+| `nbr_walk/low_deg` | 0.345 | 0.395 | -12.8% | 0.051 against 0.154 | noise |
+
+The `walk_edges` result is decisive. The `nbr_walk/both` result passes both
+halves of the rule, and it passes the second half by a hair: it must be
+quoted with its spread, and never as "+17%" alone.
+
+## Finding: `low_deg` also DESTABILISES the result
+
+Beside the loss of the mean, the seed spread of the hop R2 GROWS under the
+rule: ±.012 to ±.064 for `fdlinear`, and ±.046 to ±.077 for `v1`. The
+result starts to depend on the seed. This was not stated when the rule was
+proposed, and it is a second reason to reject it.
+
+## `low_deg` at 1.13M nodes: the trade, measured
+
+com_youtube, dim 64, 500 epochs, 8 host chunks, seed 42.
+Source: `results/mixmatch/mm_yt1M_*.log`, `time_both.txt`, `time_low_deg.txt`.
+
+| | `nbr_walk/both` | `nbr_walk/low_deg` | change |
+| --- | --- | --- | --- |
+| `D.nnz` | 23,163,843 | 20,555,488 | -11.3% |
+| t_aug | 28.9 s | 23.8 s | -17.6% |
+| t_embed | 512.1 s | 490.8 s | -4.2% |
+| wall clock | 12:20.62 | 11:41.03 | -5.3% |
+| **peak RSS** | 4799 MB | 4505 MB | **-6.1%** |
+| accuracy | 0.9764 | 0.9157 | -6.2% |
+| F1 | 0.9760 | 0.9103 | -6.7% |
+| AUC | 0.9978 | 0.9821 | -1.6% |
+| **hop R2** | **0.436** | 0.157 | **-64.0%** |
+
+**`low_deg` is rejected.** It buys 6.1% of the memory and it sells 64% of
+the geometry. The adjacency coverage falls to 54.6%, and the attraction
+lives at `h = 1` only.
+
+**What survives the rejection, and it matters.** The asymmetry itself is
+NOT the problem. Every 1.13M run above uses a directed `D` (axis E-C), and
+`nbr_walk/both` reaches AUC 0.9978 with it. What fails is dropping an
+ATTRACTION term. A rule that drops FAR entries instead of `h = 1` entries
+carries none of this cost, and it has not been tested.

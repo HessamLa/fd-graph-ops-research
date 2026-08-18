@@ -36,3 +36,4 @@ Use these exact commands:
 - Install a package after granted permission: `.venv/bin/pip install <package>`
 - Run a tool: `.venv/bin/pytest`
 
+To store large files and artifacts use `/tmp/` for temporary ones, and `data_cache/` for others. These files can be `.npz` and other files. You may use a symlink to link to them locally.

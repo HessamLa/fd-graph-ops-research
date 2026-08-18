@@ -56,8 +56,14 @@ from __future__ import annotations
 import jax.numpy as jnp
 
 
-def fdlinear(x, planes, params):
-    """`Fa + Fr` of the fdlinear law. `planes` is `(shell_coeff, h, freq)`."""
+def fdlinear_3plane(x, planes, params):
+    """`Fa + Fr` of the fdlinear law. `planes` is `(shell_coeff, h, freq)`.
+
+    RENAMED 2026-08-17, from `fdlinear`. Nothing of the body is removed;
+    the name moved so that the 2-plane form below can take it without
+    shadowing this one. Kept callable, as the reference that every new
+    form must reproduce number for number.
+    """
     _shell, h, freq = planes
     live = h > 0                       # a pad cell has every plane at 0
     near = h <= 1
@@ -74,3 +80,71 @@ def fdlinear(x, planes, params):
     Fr = jnp.where(live, -coeff * ex, 0.0)
 
     return Fa + Fr
+
+# ---------------------------------------------------------------------------
+# UPDATE 2026-08-17 -- the plane count
+# ---------------------------------------------------------------------------
+# Nothing above is removed. What changes is the NUMBER of planes that the
+# caller sends, and the reason is memory.
+#
+# Reason. `fdlinear` above binds `_shell` and never reads it: the law has
+# no `shell_coeff`, as the closing paragraph of the module docstring says.
+# The caller built it anyway. At n = 1,134,890 and nnz = 23,163,843 that
+# dead plane cost 92.7 MB of host array, a 109.5 MB packed tile, and about
+# 460 MB of transient inside `shell_counts` -- for a value the kernel drops.
+#
+# Thus `fdlinear` now unpacks TWO planes, `(h, freq)`. The physics is
+# unchanged, line for line. Only the dead argument is gone.
+#
+# `fdlinear_fused` goes one step further, on the observation that `h` and
+# `freq` never appear apart in this law:
+#
+#     w = -1.0      for h == 1     (a SENTINEL, see below)
+#     w = h / freq  for h >= 2     (always > 0, since h >= 2 and freq >= 1)
+#     w = 0.0       for a pad cell
+#
+# The sentinel is load-bearing. A plain `w = h / freq` cannot be decoded:
+# `h=1, freq=3` and `h=2, freq=6` both give 0.333, thus the `h == 1` branch
+# and the `h >= 2` branch become indistinguishable and the attraction
+# fires on the wrong cells. The `h == 1` branch reads NEITHER `h` NOR
+# `freq` -- its coefficient is the constant `kr` -- thus it needs one flag
+# and no value, and the sign carries the flag at no cost. The three
+# regions are disjoint: negative, positive, exactly zero.
+#
+# The cost of fusing: `h / freq` becomes a BUILD-time quantity. `k1`, `k4`
+# and `kr` stay traced scalars and sweep for free, but a law of the form
+# `h / freq**beta` could no longer sweep `beta` without rebuilding `D`.
+# Take this path only when the law stops moving.
+
+
+def fdlinear(x, planes, params):
+    """`Fa + Fr` of the fdlinear law. `planes` is `(h, freq)`."""
+    h, freq = planes
+    live = h > 0                       # a pad cell has every plane at 0
+    near = h <= 1
+
+    ex = jnp.exp(params["sign"] * params["k4"] * x)
+    Fa = jnp.where(near & live, params["k1"] * x, 0.0)
+    coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
+    Fr = jnp.where(live, -coeff * ex, 0.0)
+    return Fa + Fr
+
+
+def fdlinear_fused(x, planes, params):
+    """The same law from ONE plane `w`. See the UPDATE note above."""
+    w, = planes
+    live = w != 0                      # a pad cell is exactly 0
+    near = w < 0                       # the h == 1 sentinel
+
+    ex = jnp.exp(params["sign"] * params["k4"] * x)
+    Fa = jnp.where(near, params["k1"] * x, 0.0)
+    coeff = jnp.where(near, params["kr"], w)
+    Fr = jnp.where(live, -coeff * ex, 0.0)
+    return Fa + Fr
+
+
+def fuse(h, freq):
+    """The `w` plane, on the host, from `D.data` and the `freq` data."""
+    import numpy as np
+    return np.where(h <= 1.0, -1.0,
+                    h / np.maximum(freq, 1.0)).astype(np.float32)

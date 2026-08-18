@@ -216,4 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-data_cache
+
+data_cache/
+data_cache/*
+
+# regenerable graph caches -- never track
+_cache/
