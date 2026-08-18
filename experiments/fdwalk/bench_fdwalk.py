@@ -218,6 +218,15 @@ def build_D(A, n, rng):
     t0 = time.time()
 
     if args.pairs == "nbr_walk":
+        # 2026-08-18: `nbr_walk` returns before the `--policy buckets`
+        # block below, thus a run that asked for `buckets` would get `cap`
+        # behaviour AND would record `policy=buckets` in its RESULT line.
+        # A mislabelled result is worse than a refused run, thus this stops.
+        if args.policy == "buckets":
+            _ap.error("--policy buckets is not implemented for --pairs "
+                      "nbr_walk: the nbr_walk path builds rows directly and "
+                      "never reaches the bucket sampler. Use --pairs walk or "
+                      "walk_edges, or implement the row-wise bucket rule.")
         # The specification of 2026-08-17. Row u = every neighbour of u,
         # plus every node that a walk from u reached.
         st = W.walk_rows(A, n, args.walks, args.walk_len, rng)

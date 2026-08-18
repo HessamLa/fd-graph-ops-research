@@ -79,6 +79,42 @@ result in `FINDINGS.md` is a `plain` result.
   it: `dZ` is a FORCE, thus its magnitude means "this node must move far",
   and Adam divides that information away.
 
+### P1 -- `cap` and `buckets` stay in the experiment set (2026-08-18)
+
+Decision of the user, 2026-08-18: **both `--policy` values remain live
+methods of fdwalk.** An earlier statement in the session called `buckets`
+"not on the live path"; that was wrong, and `CATALOG.md` 2.7 carries the
+correction. Every grid from here on varies `--policy` as an axis, and does
+not fix it at `cap`.
+
+Remember what they are: `cap` runs ALWAYS, and `buckets` is a SECOND stage
+on top of it, thus the comparison is "cap only" against "cap, then
+buckets". `buckets` has no far pairs by construction, thus read it as a
+MEMORY method first (`D.nnz`, peak RSS) and a quality method second.
+
+- [ ] **Implement `buckets` for `--pairs nbr_walk`.**
+  WHY: `nbr_walk` is the current best augmentation AND it is the one path
+  where `buckets` does not exist. `build_D` branches early and returns
+  before the bucket sampler. Until 2026-08-18 that combination silently ran
+  `cap` and recorded `policy=buckets`; a guard now refuses the run.
+  HOW: the bucket rule is global over `h >= 2`, and `walk_rows` produces
+  rows directly, thus the rule must be restated row-wise or applied to the
+  concatenated row output before the CSR build.
+  GATE: at the same `D.nnz` as `cap`, does it match on AUC and hop R2?
+
+- [ ] **Sweep `--bucket-total`.** The default is `n*log10(n)`, which is the
+  size the specification asked for and has never been varied. The 73% hop
+  R2 cost may be a budget effect and not a policy effect, and one sweep
+  separates them.
+
+- [ ] **Give `buckets` a far-pair option.** The hypothesis that follows
+  from every measurement of this branch: `buckets` loses the hop R2 because
+  it has NO long-range term, not because its stratification is wrong. Add
+  `n*log10(n)` far pairs at `deg^0.75` on top of the bucket budget and
+  re-measure. If the R2 returns, the finding is about far pairs and the
+  bucket policy is exonerated. **This is the cheapest test of the branch's
+  central claim.**
+
 ### P1 -- asymmetric `D` for `cap` and `buckets` (requested 2026-08-18)
 
 - [ ] **`cap` with a directed `D`.**
@@ -110,6 +146,8 @@ result in `FINDINGS.md` is a `plain` result.
 
 - [ ] **The 2x2 of both against their symmetric forms**, on Cora first, then
   PubMed, then 1.13M. Three seeds. Report the four cells, not two.
+  Cells: {cap, buckets} x {symmetric, directed}. `--policy` is an AXIS of
+  this grid and it is not fixed at `cap`.
 
 ### P1 -- the second-order walk of node2vec (requested 2026-08-18)
 

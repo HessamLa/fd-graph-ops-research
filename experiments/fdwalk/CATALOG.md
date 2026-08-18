@@ -311,6 +311,120 @@ rejected on the directed key, thus a pair stored as `(v, u)` did not reject
 
 ---
 
+## 2.7 The `--policy` axis: `cap` and `buckets`
+
+**Both are LIVE methods of fdwalk, and both stay in the experiment set**
+(decision of the user, 2026-08-18). An earlier statement in the session
+called `buckets` "not on the live path"; that was wrong. `--policy` is
+wired into the main harness and it is orthogonal to `--pairs`.
+
+**They are not two alternatives at the same level.** `cap` runs ALWAYS,
+and `buckets` is a SECOND stage layered on top of it:
+
+```
+walk pairs -> cap_per_node(--cap m)  ->  weights  ->  [--policy buckets]
+                                                      global stratified
+                                                      subsample of h >= 2
+```
+
+Thus "cap against buckets" means "cap only" against "cap, then buckets".
+Provenance: [bench_fdwalk.py:301](../bench_fdwalk.py#L301) for the cap,
+[bench_fdwalk.py:307](../bench_fdwalk.py#L307) for the bucket branch.
+
+### 2.7.1 `cap` -- a per-node budget, by visit count
+
+**What it is.** Keep at most `m` pairs for each node, the ones the walks
+visited most.
+
+**How it works.** A pair has two endpoints, thus the rule looks at it two
+times, and the pair survives if EITHER endpoint keeps it. This is the
+OR-symmetrisation of a neighbour graph in LargeVis and UMAP [8, 9]: a
+low-degree node keeps its partners although a hub does not choose it. Ties
+break by `np.lexsort`, which is deterministic, thus a run repeats.
+
+**A consequence.** A row can hold MORE than `m` pairs, and a hub collects
+many. Thus `cap` does NOT give every row the same width, and this is what
+axis E-B proposes to change.
+
+**It is paired with far pairs**: `n * log10(n)` random non-stored pairs at
+the weight 100, drawn at `deg^0.75`. That is the long-range term.
+
+**Memory note.** The int64 form of this function held six arrays of 16M
+entries at the same time, about 1.4 GB, and it stopped the first two
+attempts of G3 at 1.13M nodes. It is int32 now where int32 is safe.
+
+**Provenance.** [walks.py:280](../walks.py#L280), `cap_per_node`
+
+### 2.7.2 `buckets` -- a global budget, stratified by hop
+
+**What it is.** Keep every original edge at `h = 1`, and add exactly
+`n * log10(n)` pairs at `h >= 2` in fixed proportions: **50% at h=2, 25% at
+h=3, 25% at h>=4**. The augmented graph then holds
+`|E| + |V| * log10(|V|)` pairs, which is the size the specification asked
+for.
+
+```python
+FRACTIONS = (0.50, 0.25, 0.25)          # h == 2, h == 3, h >= 4
+
+def budget(n: int):
+    return int(n * np.log10(max(n, 10)))
+```
+
+**Three properties, all deliberate.**
+
+1. **The budget is GLOBAL, not per node.** A hub can hold many pairs and a
+   leaf none beyond its edges. This is the opposite of `cap`.
+2. **A short bucket is NOT topped up from another.** The proportions are
+   the experiment.
+3. **There are NO far pairs.** The size formula leaves no room, thus every
+   `h` in `D` is a real hop distance or a real walk gap, and there is no
+   weight-100 sentinel.
+
+**The measured cost, and it is large.** Property 3 removes the long-range
+term, and the long-range term is what carries the hop R2. On Cora, holding
+the force law at `v1`:
+
+| force | policy | `D.nnz` | AUC | hop R2 | final \|\|dZ\|\| |
+| --- | --- | --- | --- | --- | --- |
+| v1 | cap | 75,334 | 0.9958 | **0.616** | 0.27 |
+| v1 | buckets | 29,148 | 0.9957 | **0.169** | 0.21 |
+| v2 | cap | 75,334 | 0.9905 | 0.584 | **250.90** |
+| v2 | buckets | 29,148 | 0.9898 | **0.073** | 0.97 |
+
+**`cap -> buckets` costs 73% of the hop R2** (0.616 -> 0.169) at 39% of the
+entries. Link prediction barely moves, +0.60% and +0.07%, which is noise at
+the 1% floor. This is the recurring pattern of the branch: **the pair set
+decides the AUC, and the long-range term decides the geometry.**
+
+The `||dZ|| = 250.90` cell is a separate finding: `v2` with far pairs does
+not converge, because a far pair carries `h = 100` and `v2`'s
+`Fr = -k3 * h = -1000` never decays with the distance.
+
+**Thus `buckets` is a MEMORY method.** It is kept in the experiment set for
+that reason, and a run of it should be read against `D.nnz` and peak RSS
+first, and against the hop R2 second.
+
+**Provenance.** [buckets.py](../buckets.py), `bucket_sample`, `budget`
+
+#### UPDATE 2026-08-18T00:20 -- a mislabel defect, and the guard
+
+**Reason.** `--pairs nbr_walk` branches early in `build_D` and RETURNS
+before the bucket block is reached. A run passing
+`--pairs nbr_walk --policy buckets` therefore got `cap` behaviour, and the
+RESULT line still recorded `policy=buckets`, because the line writes
+`args.policy` and not what ran. **Nothing raised an error.** This is the
+same class of defect as the `low_deg` degree trap: silent, and it produces
+a labelled number that is not the number.
+
+**The updated version.** `build_D` now stops the run with an explicit
+message. A refused run is better than a mislabelled result. Implementing
+the row-wise bucket rule for `nbr_walk` is an open TODO.
+
+**Adopted at:** 2026-08-18.
+**Provenance.** [bench_fdwalk.py:220](../bench_fdwalk.py#L220)
+
+---
+
 ## 3. Edge weights
 
 `weights.py` holds four rules. **All are rounded to an integer** and
