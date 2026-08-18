@@ -1,0 +1,1 @@
+nbrwalk_base               dnnz=209542 auc=0.9651 r2_dist=0.019 policy=cap 
