@@ -1,23 +1,23 @@
-# fdwalk -- Product Requirements Document
+# fodiwalk -- Product Requirements Document
 
 Created 2026-08-18T21:10:00-07:00.
 
 ## 1. Purpose
 
-`experiments/fdwalk/` holds 2,902 lines of working research code in 15 flat
+`experiments/fodiwalk/` holds 2,902 lines of working research code in 15 flat
 scripts, of which `bench_fdwalk.py` alone is 896 lines and mixes argument
 parsing, augmentation, the embedding loop, evaluation and reporting. Every
 result of the 2026-08-15..18 campaign came out of it, and none of it is
 importable.
 
-This project turns that code into a package, `./fdwalk/`, with the tree and
+This project turns that code into a package, `./fodiwalk/`, with the tree and
 the usage of `./archive/root-2026-08-16/fdge_jax/`, and then rewires the
-experiments to import `FDWalk` from it.
+experiments to import `Fodiwalk` from it.
 
 **This is a refactor with a parity requirement, not a redesign.** The
 physics, the augmentation rules and the numbers do not change. A run of the
 new package must reproduce a run of the old script to the digits recorded
-in `experiments/fdwalk/RESULTS.md`.
+in `experiments/fodiwalk/RESULTS.md`.
 
 ## 2. Non-goals
 
@@ -46,9 +46,9 @@ fdge_jax/validation/*.py             parity and behaviour tests
 ## 4. Target tree
 
 ```
-fdwalk/
-  __init__.py            exports FDWalk
-  fdwalk.py              class FDWalk: make_graph, augment_graph, embed,
+fodiwalk/
+  __init__.py            exports Fodiwalk
+  fodiwalk.py              class Fodiwalk: make_graph, augment_graph, embed,
                          fit, graph_walk
   core/
     __init__.py
@@ -109,13 +109,13 @@ every defect above was silent: the run produced a number, not an error.
 
 Link prediction and the hop-distance regression are measurement, not
 engine. `fdge_jax` put them under `validation/`. They go in `misc/` per the
-brief's description of `misc/`, and a later move to `fdwalk/eval/` is a
+brief's description of `misc/`, and a later move to `fodiwalk/eval/` is a
 rename, not a redesign.
 
 **Open question for the user:** the evaluation currently lives in
 `fodined/link_prediction.py` and in `bench_fdwalk.py`. Options are (a) copy
-it into `fdwalk/misc/evaluation.py`, (b) keep importing `fodined`, or (c)
-make `fdwalk` depend on nothing outside itself. **This PRD assumes (c), a
+it into `fodiwalk/misc/evaluation.py`, (b) keep importing `fodined`, or (c)
+make `fodiwalk` depend on nothing outside itself. **This PRD assumes (c), a
 self-contained package**, because a package that imports its predecessor is
 not a module. Say so if (b) is wanted instead.
 
@@ -139,7 +139,7 @@ array of length `nnz` whose entry `i` is the row that owns stored entry
 **Success criteria.**
 1. `row_of` matches `np.repeat(np.arange(n), np.diff(indptr))` on 20 random
    CSR matrices, including ones with empty rows.
-2. No import from any other `fdwalk` module (it is the bottom of the tree).
+2. No import from any other `fodiwalk` module (it is the bottom of the tree).
 
 ---
 
@@ -204,7 +204,7 @@ reads, in order, and the registry carries it:
 
 **Success criteria.**
 1. A registry `FORCE_PLANES` maps each law name to its plane tuple, and
-   `FDWalk` builds the plane list FROM the registry, never from a branch.
+   `Fodiwalk` builds the plane list FROM the registry, never from a branch.
 2. `fdlinear_fused` reproduces `fdlinear` to float32 rounding on Cora:
    `||dZ|| == 0.5016`, AUC `0.9962`, hop R2 `0.253` (2026-08-17 record).
 3. `shell_counts` never allocates a table wider than the number of DISTINCT
@@ -312,12 +312,12 @@ the rule holds -- the number that decides what fits on the card.
 
 ---
 
-### B8. `fdwalk.py` -- `class FDWalk`
+### B8. `fodiwalk.py` -- `class Fodiwalk`
 
 **Contents.** The user-facing class, subclassing `ForceDirected`.
 
 ```python
-class FDWalk(ForceDirected):
+class Fodiwalk(ForceDirected):
     def make_graph(self, data, **kw)      # stub: returns data
     def graph_walk(self, A, n, **kw)      # -> walk statistics
     def augment_graph(self, G, **kw)      # -> D, and the plan
@@ -378,5 +378,5 @@ The numbers come from `RESULTS.md` and `FINDINGS.md`.
 | A subagent "improves" the physics while moving it | Parity table of section 8 is the gate; any numeric change fails it |
 | The plane/law coupling is broken during the split | B3 registry plus `plan_contract.py`; I2 is asserted, not assumed |
 | `bench_fdwalk.py` is rewritten instead of rewired | The experiment scripts keep their flags and their RESULT line format |
-| The campaign is blocked by the refactor | `experiments/fdwalk/` keeps working until parity passes; nothing is deleted |
+| The campaign is blocked by the refactor | `experiments/fodiwalk/` keeps working until parity passes; nothing is deleted |
 | Import cycles between `core` and `augment_graph` | `core` imports nothing from the package except `core`; the dependency runs one way |

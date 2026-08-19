@@ -1,4 +1,4 @@
-# fdwalk -- Orchestration
+# fodiwalk -- Orchestration
 
 Created 2026-08-18T21:20:00-07:00. Companion to `PRD.md`, which is the
 authority on what each block must contain and what it must satisfy. This
@@ -16,7 +16,7 @@ plane/law coupling, and a cold agent will reproduce them unless told.
 `PRD.md` section 8, not by whether its code reads well. A refactor that
 changes a number has failed even when the code is better.
 
-**Nothing is deleted.** `experiments/fdwalk/` keeps working throughout. The
+**Nothing is deleted.** `experiments/fodiwalk/` keeps working throughout. The
 new package is additive until the parity table passes.
 
 **Model selection.** `sonnet` for a mechanical move with a clear target;
@@ -39,7 +39,7 @@ after two failed attempts on the same criterion.
     W3  A3 core/force_directed    A4 augment_graph/mechanical  (needs A2 / A1)
         |                         A5 augment_graph/walks.py
         |
-    W4  A7 fdwalk.py FDWalk                                (needs A2,A3,A4,A5,A6)
+    W4  A7 fodiwalk.py Fodiwalk                                (needs A2,A3,A4,A5,A6)
         |
     W5  A8 rewire experiments + parity                     (needs A7)
 ```
@@ -53,8 +53,8 @@ one way and any cycle is a defect.
 
 ### A1 -- `core/csr.py` and `make_graph/` -- **sonnet**
 
-**Goal.** Move `fodined/core/csr.py` verbatim to `fdwalk/core/csr.py`, and
-`experiments/fdwalk/datasets.py` to `fdwalk/make_graph/datasets.py`. Add
+**Goal.** Move `fodined/core/csr.py` verbatim to `fodiwalk/core/csr.py`, and
+`experiments/fodiwalk/datasets.py` to `fodiwalk/make_graph/datasets.py`. Add
 the `__init__.py` files. Change imports only.
 
 **Must not.** Change any function body. "Tidy" a docstring. Add a feature.
@@ -64,7 +64,7 @@ the `__init__.py` files. Change imports only.
    CSRs including ones with empty rows.
 2. `load("cora")` gives `n = 2708`, symmetric, zero diagonal, sorted
    indices.
-3. `fdwalk/core/csr.py` imports nothing from `fdwalk`.
+3. `fodiwalk/core/csr.py` imports nothing from `fodiwalk`.
 
 **Judged by.** A diff against the source that shows import lines only.
 
@@ -117,7 +117,7 @@ registry; I3 a pad cell has every plane at 0.
 **Goal.** `Callback_Base` and `class ForceDirected` with exactly the
 methods the brief names: `forces`, `updateGradient`, `attach_callback`,
 `notify_callback`, `get_embeddings`, `get_embeddings_df`, `Th`, `updateZ`,
-`embed`. Source is `fodined/core/fodined.py` plus the `FDWalk` overrides in
+`embed`. Source is `fodined/core/fodined.py` plus the `Fodiwalk` overrides in
 `bench_fdwalk.py` lines 486-600.
 
 **Why opus.** The chunking logic and the batching interact: `embed` slices
@@ -201,9 +201,9 @@ and build `evaluation.py` from `fodined/link_prediction.py` plus
 
 ---
 
-### A7 -- `fdwalk/fdwalk.py` -- **opus**
+### A7 -- `fodiwalk/fodiwalk.py` -- **opus**
 
-**Goal.** `class FDWalk(ForceDirected)` with `make_graph` (stub),
+**Goal.** `class Fodiwalk(ForceDirected)` with `make_graph` (stub),
 `graph_walk`, `augment_graph`, `embed`, `fit` (raises).
 
 **Why opus.** This is where the 896-line script's branching becomes an API.
@@ -220,7 +220,7 @@ the whole point of the refactor.
 
 ### A8 -- rewire the experiments, and prove parity -- **opus**
 
-**Goal.** Change `experiments/fdwalk/bench_fdwalk.py` to import `FDWalk`
+**Goal.** Change `experiments/fodiwalk/bench_fdwalk.py` to import `Fodiwalk`
 from the package. Keep every command-line flag and the RESULT line format
 byte-for-byte, so the existing drivers, `update_results.py`,
 `grid_table.py` and the `results` session keep working untouched.
@@ -260,10 +260,10 @@ For every agent, in this order:
 
 ## 5. Definition of done
 
-1. `from fdwalk import FDWalk` works from the repository root.
+1. `from fodiwalk import Fodiwalk` works from the repository root.
 2. All six parity scenarios reproduce.
-3. `experiments/fdwalk/bench_fdwalk.py` runs on the package with unchanged
+3. `experiments/fodiwalk/bench_fdwalk.py` runs on the package with unchanged
    flags and an unchanged RESULT line.
-4. `fdwalk/tests/` passes.
-5. `experiments/fdwalk/` is untouched and still runnable, so the campaign
+4. `fodiwalk/tests/` passes.
+5. `experiments/fodiwalk/` is untouched and still runnable, so the campaign
    is never blocked by the refactor.
