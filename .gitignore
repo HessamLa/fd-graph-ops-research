@@ -222,3 +222,20 @@ data_cache/*
 
 # regenerable graph caches -- never track
 _cache/
+
+# --- 2026-08-18: stripped from history and kept out from here on ---------
+# These are datasets, caches and rendered artifacts. They live on disk and
+# are regenerated; they were tracked by accident and carried ~3.2 GB of
+# blobs, including five files over GitHub's 100 MB hard limit, which made
+# the repository unpushable. Removed with `git filter-branch`; nothing was
+# lost, because every path below still exists in the working tree.
+data_cache_BKUP/
+**/data_cache_BKUP/
+**/_cache/
+outputs_auxdim_multi/
+outputs_auxdim_multi_BKUP/
+outputs_sell_c_sigma_multi/
+outputs_sell_c_sigma_multi_BKUP/
+*.gif
+embeddings.npz
+embeddings_auxdim.npz
