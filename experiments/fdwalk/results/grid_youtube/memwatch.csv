@@ -1,0 +1,4 @@
+ts,avail_mb,bench_rss_mb,config
+14:56:32,6202,1,"--pairs walk --policy buckets --optim plain "
+14:56:42,4168,1,"--pairs walk --policy buckets --optim plain "
+14:56:52,5503,1,"--pairs walk --policy buckets --optim plain "

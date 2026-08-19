@@ -1,0 +1,6 @@
+variant                        t_aug   t_embed    peakMB       AUC    hopR2       dz
+diverged                                                                            
+momentum_lr0.1_const       t_aug=0.2 t_embed=13.5 dz=0.0130 auc=0.9992 r2_dist=0.561 rss=1006 
+momentum_lr1.0_linear      t_aug=0.2 t_embed=15.5 dz=nan auc=nan r2_dist=nan diverged=1 rss=878 
+nesterov_lr0.1_const       t_aug=0.1 t_embed=12.7 dz=0.0125 auc=0.9982 r2_dist=0.554 rss=1007 
+nesterov_lr1.0_linear      t_aug=0.2 t_embed=13.4 dz=3911.0583 auc=0.9591 r2_dist=0.344 rss=1002 

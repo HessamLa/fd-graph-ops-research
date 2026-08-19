@@ -68,6 +68,10 @@ _ap.add_argument("--far-with-buckets", action="store_true",
                  help="buckets: ALSO add n*log10(n) far pairs at weight "
                       "--far-weight. Tests whether the hop R2 that buckets "
                       "loses is a far-pair effect and not a policy effect.")
+_ap.add_argument("--lr-decay", default="const", choices=("const", "linear"),
+                 help="linear gives lr_t = lr * (1 - epoch/epochs), thus it "
+                      "falls to ~0 at the last epoch. `const` is the "
+                      "behaviour of every run before 2026-08-18.")
 _ap.add_argument("--eta", type=float, default=0.3,
                  help="velocity: v = eta*dZ + (1-eta)*v0")
 _ap.add_argument("--sgd-frac", type=float, default=0.5,
@@ -367,6 +371,14 @@ def build_D(A, n, rng):
         info["near_nnz"] = 0
         near = W.to_csr(stats["key"], h, n)
         info["near_nnz"] = int(near.nnz)
+        # 2026-08-18 DEFECT FIX. This branch returned no `freq`, thus a
+        # `--force fdlinear` run got `planes = (shell_coeff, h)` from the
+        # fallback in `augment_graph` and read `shell_coeff` AS `h`. The
+        # physics was wrong and nothing raised an error; the run diverged
+        # to NaN at 2000 epochs and only the eval crash exposed it. `freq`
+        # is built here on the SAME sparsity as `near`, exactly as the
+        # nbr_walk branch does.
+        freq_b = W.to_csr(stats["key"], stats["cnt"].astype(np.float64), n)
         info["far_pairs"] = 0
         info["far_asked"] = 0
         if args.far_with_buckets:
@@ -390,8 +402,14 @@ def build_D(A, n, rng):
                       np.concatenate([c.col, far[:, 1], far[:, 0]]))),
                     shape=(n, n))
                 info["near_nnz"] = int(near.nnz)
+                fc = freq_b.tocoo()
+                freq_b = sp.csr_matrix(
+                    (np.concatenate([fc.data, np.ones(2 * far.shape[0])]),
+                     (np.concatenate([fc.row, far[:, 0], far[:, 1]]),
+                      np.concatenate([fc.col, far[:, 1], far[:, 0]]))),
+                    shape=(n, n))
         info["t_aug"] = time.time() - t0
-        return near, stats, info
+        return near, dict(stats, freq=freq_b), info
 
     if args.pairs == "walk_edges":
         # The first-order edges always go in, at the distance 1. A walk can
@@ -574,6 +592,12 @@ class FDWalk(Fodined):
     def updateZ(self, lr=None):
         """Axis C. The base class does `Z = Z + lr * dZ`; this dispatches."""
         lr = self.lr if lr is None else lr
+        if args.lr_decay == "linear":
+            # lr_t = lr * (1 - epoch/epochs). At the last epoch this is
+            # lr/epochs and not 0, thus the final step still moves.
+            # A decreasing lr is also the answer PLAN.md axis E names for a
+            # non-converging update cycle, thus this flag serves two items.
+            lr = lr * (1.0 - self.epoch / max(1, self.epochs))
         self.Z, self.opt_state = self.rule(
             self.Z, self.dZ, lr, self.opt_state, self.epoch)
 
@@ -759,6 +783,15 @@ if _use_A:
 fd.freq = (stats["freq"].data
            if args.force == "fdlinear" and stats.get("freq") is not None
            else None)
+if args.force == "fdlinear" and fd.freq is None:
+    # Without this the fallback in `augment_graph` hands `fdlinear` the
+    # planes of `v1`, thus it reads `shell_coeff` as `h`. That is the
+    # defect of 2026-08-18, and it was silent. A missing plane is a bug in
+    # the augmentation, never a reason to run different physics.
+    raise SystemExit("[fdwalk] fdlinear needs a `freq` plane and the "
+                     f"augmentation for --pairs {args.pairs} --policy "
+                     f"{args.policy} did not build one. This is a defect, "
+                     "not a configuration error.")
 if args.fuse_planes:
     if fd.freq is None:
         _ap.error("--fuse-planes needs --force fdlinear and a freq plane")
@@ -781,6 +814,26 @@ log(f"plan: {fd.plan_stats}")
 log(f"embedded {Z.shape} in {t_embed:.1f}s ({args.epochs / t_embed:.1f} "
     f"epochs/s), final ||dZ|| avg {fd.Th(fd.dZ):.6f}, "
     f"finite: {bool(np.isfinite(Z).all())}, RSS {rss_mb():.0f} MB")
+
+# 2026-08-18. A diverged run must RECORD a divergence, and not crash inside
+# an sklearn estimator with "Input X contains NaN". Seven runs of the Cora
+# grid died that way, and a crash carries no time, no memory, and no RESULT
+# line -- thus a real measurement (the run diverged AT THIS lr) was lost as
+# a stack trace. The run now reports what it did and stops cleanly.
+if not bool(np.isfinite(Z).all()):
+    log(f"DIVERGED: Z holds {int((~np.isfinite(Z)).sum())} non-finite "
+        f"values. The evaluation is skipped; the RESULT line records nan.")
+    fields = [("graph", args.graph), ("pairs", args.pairs),
+              ("weight", args.weight), ("optim", args.optim),
+              ("seed", args.seed), ("n", n), ("dnnz", int(D.nnz)),
+              ("t_aug", f"{info['t_aug']:.1f}"),
+              ("t_embed", f"{t_embed:.1f}"), ("dz", "nan"),
+              ("acc", "nan"), ("f1", "nan"), ("auc", "nan"),
+              ("r2_dist", "nan"), ("force", args.force),
+              ("policy", args.policy), ("lr", args.lr),
+              ("diverged", 1), ("rss", f"{rss_mb():.0f}")]
+    log("RESULT\t" + "\t".join(f"{k}={v}" for k, v in fields))
+    raise SystemExit(0)
 
 t0 = time.time()
 scores, lp = link_prediction(Z, A, n, args.lp_pairs, rng, args.seed)

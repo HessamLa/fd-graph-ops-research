@@ -1,0 +1,2269 @@
+<title>fdwalk Run Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+ --ground:#f6f7f7; --panel:#fff; --panel-2:#eef1f1;
+ --ink:#12171a; --ink-2:#4a565c; --ink-3:#7d8b91; --rule:#dde3e4;
+ --accent:#0d7d78;
+ --ok:#2f7d4f; --run:#b07503; --div:#a8402c; --fail:#7c2d22; --pend:#9aa7ac;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --ground:#0d1114; --panel:#151b1f; --panel-2:#1b2328;
+ --ink:#e8eded; --ink-2:#9fb0b5; --ink-3:#6b7b81; --rule:#232c31;
+ --accent:#3fb8ae;
+ --ok:#4fa871; --run:#d9a02a; --div:#d4674f; --fail:#b8503c; --pend:#55646a;
+}}
+:root[data-theme="dark"]{
+ --ground:#0d1114; --panel:#151b1f; --panel-2:#1b2328;
+ --ink:#e8eded; --ink-2:#9fb0b5; --ink-3:#6b7b81; --rule:#232c31;
+ --accent:#3fb8ae;
+ --ok:#4fa871; --run:#d9a02a; --div:#d4674f; --fail:#b8503c; --pend:#55646a;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);margin:0;
+ font-family:Archivo,-apple-system,Segoe UI,sans-serif;
+ font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding:34px 22px 70px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px;
+ text-wrap:balance}
+.sub{color:var(--ink-2);font-size:14px;margin:0 0 26px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;
+ font-variant-numeric:tabular-nums}
+.lab{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+ color:var(--ink-3);font-weight:600}
+.rail{display:flex;height:16px;border-radius:3px;overflow:hidden;
+ background:var(--panel-2);margin:10px 0 12px}
+.rail>span{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:30px}
+.legend div{display:flex;align-items:center;gap:7px;font-size:13px}
+.dot{width:9px;height:9px;border-radius:2px;flex:none}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));
+ gap:13px;margin-bottom:34px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:7px;
+ padding:14px 15px}
+.card h3{margin:0;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.card .n{font-size:12px;color:var(--ink-3);margin-top:2px}
+.card .rail{height:7px;margin:11px 0 8px}
+.pct{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.stage-i{color:var(--accent);font-weight:700;font-size:12px;
+ letter-spacing:.06em}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:7px;
+ background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+ color:var(--ink-3);font-weight:600;padding:10px 11px;
+ border-bottom:1px solid var(--rule);white-space:nowrap;
+ background:var(--panel);position:sticky;top:0}
+td{padding:8px 11px;border-bottom:1px solid var(--rule);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right;font-family:"IBM Plex Mono",ui-monospace,monospace;
+ font-variant-numeric:tabular-nums}
+.chip{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;
+ font-weight:600;letter-spacing:.02em;color:#fff}
+.stripe{border-left:3px solid var(--rule)}
+h2{font-size:17px;font-weight:700;letter-spacing:-.015em;margin:34px 0 12px}
+.note{color:var(--ink-2);font-size:13px;margin:0 0 16px;max-width:66ch}
+</style>
+<div class="wrap">
+<h1>fdwalk Run Board</h1>
+<p class="sub">141 of 188 planned runs measured &middot; generated 2026-08-18 08:11:17 &middot; a diverged run is a measurement, not a failure</p>
+<div class="rail"><span style="width:70.2128%;background:var(--ok)"></span><span style="width:4.7872%;background:var(--div)"></span><span style="width:0.5319%;background:var(--run)"></span><span style="width:1.5957%;background:var(--fail)"></span><span style="width:22.8723%;background:var(--pend)"></span></div>
+<div class="legend">
+<div><span class="dot" style="background:var(--ok)"></span><span class="lab">done</span><span class="mono">132</span></div>
+<div><span class="dot" style="background:var(--div)"></span><span class="lab">diverged</span><span class="mono">9</span></div>
+<div><span class="dot" style="background:var(--run)"></span><span class="lab">running</span><span class="mono">1</span></div>
+<div><span class="dot" style="background:var(--fail)"></span><span class="lab">failed</span><span class="mono">3</span></div>
+<div><span class="dot" style="background:var(--pend)"></span><span class="lab">pending</span><span class="mono">43</span></div>
+</div>
+<h2>Stages</h2>
+<p class="note">The pipeline runs in order: every Cora grid, then PubMed carrying only the parameter values that did not diverge, then com_youtube at 1.13M nodes excluding whatever PubMed flags as poor. Medium and large graphs never share the machine.</p>
+<div class="cards">
+<div class="card">
+<div class="stage-i">STAGE 01</div>
+<h3>A lr scan</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:91.6667%;background:var(--ok)"></span><span style="width:8.3333%;background:var(--div)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">24/24</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 02</div>
+<h3>LR ladder (constant)</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:33.3333%;background:var(--ok)"></span><span style="width:16.6667%;background:var(--div)"></span><span style="width:50.0000%;background:var(--pend)"></span></div>
+<div class="pct mono">50%<span class="lab" style="margin-left:8px">12/24</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 03</div>
+<h3>LR ladder (decay)</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:87.5000%;background:var(--ok)"></span><span style="width:12.5000%;background:var(--div)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">16/16</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 04</div>
+<h3>B cap/buckets x sym/dir</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">12/12</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 05</div>
+<h3>C buckets far/budget</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">9/9</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 06</div>
+<h3>D second-order walk</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">15/15</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 07</div>
+<h3>PubMed B</h3>
+<div class="n mono">pubmed</div>
+<div class="rail"><span style="width:8.3333%;background:var(--ok)"></span><span style="width:8.3333%;background:var(--run)"></span><span style="width:83.3333%;background:var(--pend)"></span></div>
+<div class="pct mono">8%<span class="lab" style="margin-left:8px">1/12</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 08</div>
+<h3>PubMed C</h3>
+<div class="n mono">pubmed</div>
+<div class="rail"><span style="width:100.0000%;background:var(--pend)"></span></div>
+<div class="pct mono">0%<span class="lab" style="margin-left:8px">0/6</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 09</div>
+<h3>PubMed D</h3>
+<div class="n mono">pubmed</div>
+<div class="rail"><span style="width:100.0000%;background:var(--pend)"></span></div>
+<div class="pct mono">0%<span class="lab" style="margin-left:8px">0/15</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 10</div>
+<h3>other (fused)</h3>
+<div class="n mono">com_youtube</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">3/3</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 11</div>
+<h3>other (grid_pubmed)</h3>
+<div class="n mono">pubmed</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">10/10</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 12</div>
+<h3>other (lrdecay)</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:75.0000%;background:var(--ok)"></span><span style="width:25.0000%;background:var(--div)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">4/4</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 13</div>
+<h3>other (mixmatch)</h3>
+<div class="n mono">com_youtube</div>
+<div class="rail"><span style="width:90.9091%;background:var(--ok)"></span><span style="width:9.0909%;background:var(--fail)"></span></div>
+<div class="pct mono">90%<span class="lab" style="margin-left:8px">20/22</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 14</div>
+<h3>other (newsmoke)</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:100.0000%;background:var(--ok)"></span></div>
+<div class="pct mono">100%<span class="lab" style="margin-left:8px">8/8</span></div>
+</div>
+<div class="card">
+<div class="stage-i">STAGE 15</div>
+<h3>other (optim)</h3>
+<div class="n mono">cora</div>
+<div class="rail"><span style="width:87.5000%;background:var(--ok)"></span><span style="width:12.5000%;background:var(--fail)"></span></div>
+<div class="pct mono">87%<span class="lab" style="margin-left:8px">7/8</span></div>
+</div>
+</div>
+<h2>Every run</h2>
+<p class="note">Peak memory and stage runtimes are shown for every completed run. On Cora and PubMed they are indicative only &mdash; a fixed ~1&nbsp;GB of JAX and Python dominates the peak, so D.nnz is the better size proxy at that scale.</p>
+<div class="tablewrap"><table><thead><tr>
+<th>run</th>
+<th>graph</th>
+<th>state</th>
+<th class="num">AUC</th>
+<th class="num">hop R²</th>
+<th class="num">‖dZ‖</th>
+<th class="num">D.nnz</th>
+<th class="num">aug s</th>
+<th class="num">embed s</th>
+<th class="num">peak MB</th>
+</tr></thead><tbody>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_adam_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9677</td>
+<td class="num">0.219</td>
+<td class="num">1.5919</td>
+<td class="num">2238752</td>
+<td class="num">2.4</td>
+<td class="num">43.7</td>
+<td class="num">1362</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_decay_plain_lr0.9</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9994</td>
+<td class="num">0.493</td>
+<td class="num">0.0164</td>
+<td class="num">2238752</td>
+<td class="num">2.2</td>
+<td class="num">41.3</td>
+<td class="num">1302</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_decay_plain_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.494</td>
+<td class="num">0.0163</td>
+<td class="num">2238752</td>
+<td class="num">2.4</td>
+<td class="num">41.2</td>
+<td class="num">1309</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_fa2_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9995</td>
+<td class="num">0.235</td>
+<td class="num">0.0711</td>
+<td class="num">2238752</td>
+<td class="num">2.5</td>
+<td class="num">43.0</td>
+<td class="num">1310</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_adam_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.436</td>
+<td class="num">0.0234</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.3</td>
+<td class="num">1017</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_adam_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.600</td>
+<td class="num">0.1096</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.4</td>
+<td class="num">1013</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_adam_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9810</td>
+<td class="num">0.407</td>
+<td class="num">1.1563</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.5</td>
+<td class="num">1023</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_fa2_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9959</td>
+<td class="num">0.080</td>
+<td class="num">0.5806</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.0</td>
+<td class="num">1040</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_fa2_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9996</td>
+<td class="num">0.085</td>
+<td class="num">0.1644</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.0</td>
+<td class="num">1027</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_fa2_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.172</td>
+<td class="num">0.0527</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.1</td>
+<td class="num">1023</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_momentum_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9986</td>
+<td class="num">0.364</td>
+<td class="num">0.0153</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.6</td>
+<td class="num">1011</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_momentum_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.561</td>
+<td class="num">0.0130</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.6</td>
+<td class="num">1007</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_nesterov_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.363</td>
+<td class="num">0.0153</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.9</td>
+<td class="num">1011</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_nesterov_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9982</td>
+<td class="num">0.554</td>
+<td class="num">0.0125</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.8</td>
+<td class="num">1005</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_plain_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9994</td>
+<td class="num">0.134</td>
+<td class="num">0.0772</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.3</td>
+<td class="num">1016</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_plain_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.363</td>
+<td class="num">0.0153</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.4</td>
+<td class="num">1013</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_plain_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9981</td>
+<td class="num">0.516</td>
+<td class="num">0.1340</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.4</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sgd_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9995</td>
+<td class="num">0.089</td>
+<td class="num">0.1512</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.6</td>
+<td class="num">1021</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sgd_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9986</td>
+<td class="num">0.288</td>
+<td class="num">0.0216</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.7</td>
+<td class="num">1016</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sgd_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9989</td>
+<td class="num">0.462</td>
+<td class="num">0.1006</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.6</td>
+<td class="num">1015</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sqn_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.7321</td>
+<td class="num">-0.004</td>
+<td class="num">3.4390</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">13.0</td>
+<td class="num">1042</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sqn_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9639</td>
+<td class="num">0.129</td>
+<td class="num">4185.1152</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">12.8</td>
+<td class="num">1032</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_sqn_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9983</td>
+<td class="num">0.577</td>
+<td class="num">0.0199</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">12.9</td>
+<td class="num">1017</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_velocity_lr0.01</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9994</td>
+<td class="num">0.134</td>
+<td class="num">0.0771</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.8</td>
+<td class="num">1018</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_velocity_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9986</td>
+<td class="num">0.363</td>
+<td class="num">0.0153</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.8</td>
+<td class="num">1022</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_lrscan_velocity_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.557</td>
+<td class="num">0.0121</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.8</td>
+<td class="num">1010</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_momentum_lr0.1</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9995</td>
+<td class="num">0.512</td>
+<td class="num">0.0237</td>
+<td class="num">2238752</td>
+<td class="num">2.4</td>
+<td class="num">41.5</td>
+<td class="num">1304</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_nesterov_lr0.1</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.513</td>
+<td class="num">0.0216</td>
+<td class="num">2238752</td>
+<td class="num">2.2</td>
+<td class="num">41.9</td>
+<td class="num">1305</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_plain_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9977</td>
+<td class="num">0.288</td>
+<td class="num">1.2203</td>
+<td class="num">2238752</td>
+<td class="num">2.3</td>
+<td class="num">41.2</td>
+<td class="num">1315</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_sgd_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9975</td>
+<td class="num">0.275</td>
+<td class="num">1.1646</td>
+<td class="num">2238752</td>
+<td class="num">2.4</td>
+<td class="num">42.8</td>
+<td class="num">1329</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_sqn_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.508</td>
+<td class="num">0.0309</td>
+<td class="num">2238752</td>
+<td class="num">2.4</td>
+<td class="num">47.2</td>
+<td class="num">1306</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">A_velocity_lr0.999</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.505</td>
+<td class="num">0.0182</td>
+<td class="num">2238752</td>
+<td class="num">2.1</td>
+<td class="num">41.8</td>
+<td class="num">1322</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_dir_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9973</td>
+<td class="num">0.285</td>
+<td class="num">0.0084</td>
+<td class="num">19852</td>
+<td class="num">0.1</td>
+<td class="num">6.5</td>
+<td class="num">995</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_dir_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9975</td>
+<td class="num">0.297</td>
+<td class="num">0.0082</td>
+<td class="num">19852</td>
+<td class="num">0.1</td>
+<td class="num">10.5</td>
+<td class="num">997</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_dir_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9969</td>
+<td class="num">0.289</td>
+<td class="num">0.0087</td>
+<td class="num">19852</td>
+<td class="num">0.1</td>
+<td class="num">11.7</td>
+<td class="num">993</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_sym_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9974</td>
+<td class="num">0.425</td>
+<td class="num">0.0016</td>
+<td class="num">28300</td>
+<td class="num">0.8</td>
+<td class="num">6.9</td>
+<td class="num">1001</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_sym_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.425</td>
+<td class="num">0.0016</td>
+<td class="num">28276</td>
+<td class="num">0.7</td>
+<td class="num">8.7</td>
+<td class="num">1008</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_buckets_sym_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9980</td>
+<td class="num">0.452</td>
+<td class="num">0.0017</td>
+<td class="num">28288</td>
+<td class="num">1.4</td>
+<td class="num">9.4</td>
+<td class="num">1020</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_dir_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.511</td>
+<td class="num">0.0094</td>
+<td class="num">43198</td>
+<td class="num">0.1</td>
+<td class="num">6.5</td>
+<td class="num">995</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_dir_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9994</td>
+<td class="num">0.464</td>
+<td class="num">0.0088</td>
+<td class="num">43150</td>
+<td class="num">0.1</td>
+<td class="num">6.5</td>
+<td class="num">994</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_dir_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9988</td>
+<td class="num">0.375</td>
+<td class="num">0.0101</td>
+<td class="num">43149</td>
+<td class="num">0.1</td>
+<td class="num">9.8</td>
+<td class="num">992</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_sym_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9954</td>
+<td class="num">0.650</td>
+<td class="num">0.0061</td>
+<td class="num">75334</td>
+<td class="num">0.8</td>
+<td class="num">7.0</td>
+<td class="num">1016</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_sym_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9955</td>
+<td class="num">0.444</td>
+<td class="num">0.0069</td>
+<td class="num">654190</td>
+<td class="num">6.3</td>
+<td class="num">23.1</td>
+<td class="num">1206</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_sym_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9948</td>
+<td class="num">0.627</td>
+<td class="num">0.0059</td>
+<td class="num">75460</td>
+<td class="num">0.7</td>
+<td class="num">6.9</td>
+<td class="num">1006</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">B_cap_sym_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9926</td>
+<td class="num">0.641</td>
+<td class="num">0.0063</td>
+<td class="num">75364</td>
+<td class="num">1.5</td>
+<td class="num">10.8</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_far_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9943</td>
+<td class="num">0.669</td>
+<td class="num">0.0060</td>
+<td class="num">46890</td>
+<td class="num">0.9</td>
+<td class="num">13.4</td>
+<td class="num">1032</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_far_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9961</td>
+<td class="num">0.621</td>
+<td class="num">0.0060</td>
+<td class="num">46866</td>
+<td class="num">0.9</td>
+<td class="num">10.9</td>
+<td class="num">995</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_far_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9977</td>
+<td class="num">0.617</td>
+<td class="num">0.0063</td>
+<td class="num">46878</td>
+<td class="num">1.1</td>
+<td class="num">8.5</td>
+<td class="num">1033</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_nofar_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9974</td>
+<td class="num">0.425</td>
+<td class="num">0.0016</td>
+<td class="num">28300</td>
+<td class="num">1.0</td>
+<td class="num">12.7</td>
+<td class="num">1006</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_nofar_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.425</td>
+<td class="num">0.0016</td>
+<td class="num">28276</td>
+<td class="num">0.9</td>
+<td class="num">14.7</td>
+<td class="num">999</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_buckets_nofar_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9980</td>
+<td class="num">0.452</td>
+<td class="num">0.0017</td>
+<td class="num">28288</td>
+<td class="num">1.0</td>
+<td class="num">8.3</td>
+<td class="num">1031</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_budget_20000</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9994</td>
+<td class="num">0.411</td>
+<td class="num">0.0018</td>
+<td class="num">44356</td>
+<td class="num">1.5</td>
+<td class="num">15.9</td>
+<td class="num">1034</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_budget_5000</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9997</td>
+<td class="num">0.451</td>
+<td class="num">0.0015</td>
+<td class="num">20556</td>
+<td class="num">1.2</td>
+<td class="num">8.5</td>
+<td class="num">996</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">C_budget_80000</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9996</td>
+<td class="num">0.437</td>
+<td class="num">0.0019</td>
+<td class="num">56750</td>
+<td class="num">0.7</td>
+<td class="num">9.1</td>
+<td class="num">1012</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p0.5_q1.0_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9977</td>
+<td class="num">0.304</td>
+<td class="num">0.0159</td>
+<td class="num">172011</td>
+<td class="num">0.1</td>
+<td class="num">7.5</td>
+<td class="num">1005</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p0.5_q1.0_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.408</td>
+<td class="num">0.0161</td>
+<td class="num">171806</td>
+<td class="num">0.1</td>
+<td class="num">7.6</td>
+<td class="num">1003</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p0.5_q1.0_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.272</td>
+<td class="num">0.0168</td>
+<td class="num">171911</td>
+<td class="num">0.1</td>
+<td class="num">7.5</td>
+<td class="num">999</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q0.5_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9980</td>
+<td class="num">0.423</td>
+<td class="num">0.0148</td>
+<td class="num">243302</td>
+<td class="num">0.2</td>
+<td class="num">8.8</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q0.5_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.371</td>
+<td class="num">0.0147</td>
+<td class="num">242867</td>
+<td class="num">0.2</td>
+<td class="num">8.7</td>
+<td class="num">1013</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q0.5_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.432</td>
+<td class="num">0.0156</td>
+<td class="num">243568</td>
+<td class="num">0.2</td>
+<td class="num">8.6</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q1.0_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.363</td>
+<td class="num">0.0153</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.3</td>
+<td class="num">1014</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q1.0_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.444</td>
+<td class="num">0.0152</td>
+<td class="num">209364</td>
+<td class="num">0.1</td>
+<td class="num">8.2</td>
+<td class="num">1003</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q1.0_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.353</td>
+<td class="num">0.0157</td>
+<td class="num">209201</td>
+<td class="num">0.1</td>
+<td class="num">8.2</td>
+<td class="num">1002</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q2.0_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.403</td>
+<td class="num">0.0172</td>
+<td class="num">169595</td>
+<td class="num">0.2</td>
+<td class="num">7.5</td>
+<td class="num">1007</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q2.0_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9985</td>
+<td class="num">0.394</td>
+<td class="num">0.0165</td>
+<td class="num">170242</td>
+<td class="num">0.2</td>
+<td class="num">7.7</td>
+<td class="num">1008</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p1.0_q2.0_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.302</td>
+<td class="num">0.0171</td>
+<td class="num">169585</td>
+<td class="num">0.2</td>
+<td class="num">7.8</td>
+<td class="num">1008</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p2.0_q1.0_s42</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9985</td>
+<td class="num">0.471</td>
+<td class="num">0.0152</td>
+<td class="num">238573</td>
+<td class="num">0.1</td>
+<td class="num">8.6</td>
+<td class="num">1003</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p2.0_q1.0_s56</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9981</td>
+<td class="num">0.431</td>
+<td class="num">0.0151</td>
+<td class="num">238753</td>
+<td class="num">0.1</td>
+<td class="num">8.5</td>
+<td class="num">1006</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">D_p2.0_q1.0_s88</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.454</td>
+<td class="num">0.0157</td>
+<td class="num">239439</td>
+<td class="num">0.1</td>
+<td class="num">8.7</td>
+<td class="num">1004</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_adam_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9839</td>
+<td class="num">0.414</td>
+<td class="num">1.1619</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">19.7</td>
+<td class="num">1018</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_fa2_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.172</td>
+<td class="num">0.0528</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.9</td>
+<td class="num">1035</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_momentum_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.561</td>
+<td class="num">0.0130</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">17.5</td>
+<td class="num">1008</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_nesterov_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9982</td>
+<td class="num">0.554</td>
+<td class="num">0.0125</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">17.6</td>
+<td class="num">1007</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_plain_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9986</td>
+<td class="num">0.523</td>
+<td class="num">0.1274</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">11.8</td>
+<td class="num">1011</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_sgd_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.464</td>
+<td class="num">0.1098</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">14.5</td>
+<td class="num">1017</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_sqn_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.556</td>
+<td class="num">0.0284</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">19.1</td>
+<td class="num">1029</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">const_velocity_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.557</td>
+<td class="num">0.0121</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.1</td>
+<td class="num">1005</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">cora_3plane</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9962</td>
+<td class="num">0.253</td>
+<td class="num">0.5016</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">3.8</td>
+<td class="num">1010</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">cora_fused</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9962</td>
+<td class="num">0.253</td>
+<td class="num">0.5016</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">3.7</td>
+<td class="num">1004</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_adam_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9979</td>
+<td class="num">0.604</td>
+<td class="num">0.0137</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.4</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_adam_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9986</td>
+<td class="num">0.616</td>
+<td class="num">0.0136</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.4</td>
+<td class="num">1013</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_fa2_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.137</td>
+<td class="num">0.0774</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.9</td>
+<td class="num">1024</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_fa2_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.147</td>
+<td class="num">0.0731</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.0</td>
+<td class="num">1026</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_nesterov_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9715</td>
+<td class="num">0.612</td>
+<td class="num">0.0119</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">18.6</td>
+<td class="num">1012</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_nesterov_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9681</td>
+<td class="num">0.348</td>
+<td class="num">3719.0837</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">14.1</td>
+<td class="num">990</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_plain_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9984</td>
+<td class="num">0.493</td>
+<td class="num">0.0117</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">13.3</td>
+<td class="num">1007</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_plain_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.513</td>
+<td class="num">0.0115</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">10.6</td>
+<td class="num">1007</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_sgd_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.415</td>
+<td class="num">0.0123</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">17.4</td>
+<td class="num">1013</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_sgd_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9990</td>
+<td class="num">0.432</td>
+<td class="num">0.0121</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">15.2</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_sqn_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9989</td>
+<td class="num">0.597</td>
+<td class="num">0.0806</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">21.1</td>
+<td class="num">1015</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_sqn_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9993</td>
+<td class="num">0.579</td>
+<td class="num">0.0522</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">20.2</td>
+<td class="num">1015</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_velocity_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9989</td>
+<td class="num">0.494</td>
+<td class="num">0.0116</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">12.8</td>
+<td class="num">1006</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">decay_velocity_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9991</td>
+<td class="num">0.493</td>
+<td class="num">0.0115</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">13.8</td>
+<td class="num">1010</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_both_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.682</td>
+<td class="num">0.0158</td>
+<td class="num">138966</td>
+<td class="num">0.1</td>
+<td class="num">10.9</td>
+<td class="num">1040</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_both_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9987</td>
+<td class="num">0.659</td>
+<td class="num">0.0159</td>
+<td class="num">139299</td>
+<td class="num">0.1</td>
+<td class="num">9.8</td>
+<td class="num">1039</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_both_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9989</td>
+<td class="num">0.662</td>
+<td class="num">0.0159</td>
+<td class="num">139632</td>
+<td class="num">0.1</td>
+<td class="num">9.7</td>
+<td class="num">1040</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_low_deg_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9964</td>
+<td class="num">0.264</td>
+<td class="num">0.0369</td>
+<td class="num">137501</td>
+<td class="num">0.1</td>
+<td class="num">10.3</td>
+<td class="num">1025</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_low_deg_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9965</td>
+<td class="num">0.379</td>
+<td class="num">0.0386</td>
+<td class="num">137778</td>
+<td class="num">0.1</td>
+<td class="num">10.6</td>
+<td class="num">1028</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_nbr_walk_low_deg_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9978</td>
+<td class="num">0.391</td>
+<td class="num">0.0427</td>
+<td class="num">138186</td>
+<td class="num">0.1</td>
+<td class="num">9.5</td>
+<td class="num">1036</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_walk_edges_both_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9972</td>
+<td class="num">0.688</td>
+<td class="num">0.0061</td>
+<td class="num">75072</td>
+<td class="num">0.2</td>
+<td class="num">7.7</td>
+<td class="num">1022</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_walk_edges_both_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9965</td>
+<td class="num">0.677</td>
+<td class="num">0.0059</td>
+<td class="num">74962</td>
+<td class="num">0.2</td>
+<td class="num">7.6</td>
+<td class="num">1028</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_fdlinear_walk_edges_both_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9963</td>
+<td class="num">0.665</td>
+<td class="num">0.0061</td>
+<td class="num">75088</td>
+<td class="num">0.2</td>
+<td class="num">7.6</td>
+<td class="num">993</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_both_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9979</td>
+<td class="num">0.621</td>
+<td class="num">0.2442</td>
+<td class="num">138966</td>
+<td class="num">0.1</td>
+<td class="num">10.8</td>
+<td class="num">1019</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_both_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9977</td>
+<td class="num">0.530</td>
+<td class="num">0.2336</td>
+<td class="num">139299</td>
+<td class="num">0.1</td>
+<td class="num">9.7</td>
+<td class="num">1033</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_both_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9980</td>
+<td class="num">0.565</td>
+<td class="num">0.2497</td>
+<td class="num">139632</td>
+<td class="num">0.1</td>
+<td class="num">9.7</td>
+<td class="num">1019</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_low_deg_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9940</td>
+<td class="num">0.295</td>
+<td class="num">0.7476</td>
+<td class="num">137501</td>
+<td class="num">0.1</td>
+<td class="num">11.1</td>
+<td class="num">1042</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_low_deg_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9948</td>
+<td class="num">0.449</td>
+<td class="num">0.7483</td>
+<td class="num">137778</td>
+<td class="num">0.1</td>
+<td class="num">10.6</td>
+<td class="num">1020</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_nbr_walk_low_deg_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9956</td>
+<td class="num">0.442</td>
+<td class="num">0.9126</td>
+<td class="num">138186</td>
+<td class="num">0.1</td>
+<td class="num">9.6</td>
+<td class="num">1030</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_walk_edges_both_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9977</td>
+<td class="num">0.467</td>
+<td class="num">0.2030</td>
+<td class="num">75072</td>
+<td class="num">0.2</td>
+<td class="num">7.8</td>
+<td class="num">1023</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_walk_edges_both_s56</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9965</td>
+<td class="num">0.430</td>
+<td class="num">0.1905</td>
+<td class="num">74962</td>
+<td class="num">0.2</td>
+<td class="num">7.6</td>
+<td class="num">1034</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_cora_v1_walk_edges_both_s88</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9965</td>
+<td class="num">0.437</td>
+<td class="num">0.1992</td>
+<td class="num">75088</td>
+<td class="num">0.2</td>
+<td class="num">7.6</td>
+<td class="num">1048</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_yt1M_fdlinear_nbr_walk_both_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9978</td>
+<td class="num">0.436</td>
+<td class="num">0.0497</td>
+<td class="num">23163843</td>
+<td class="num">28.9</td>
+<td class="num">512.1</td>
+<td class="num">4799</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">mm_yt1M_fdlinear_nbr_walk_low_deg_s42</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9821</td>
+<td class="num">0.157</td>
+<td class="num">0.0512</td>
+<td class="num">20555488</td>
+<td class="num">23.8</td>
+<td class="num">490.8</td>
+<td class="num">4505</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">momentum_lr0.1_const</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9992</td>
+<td class="num">0.561</td>
+<td class="num">0.0130</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">12.8</td>
+<td class="num">1008</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nbrwalk_base</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9651</td>
+<td class="num">0.019</td>
+<td class="num">11.8502</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">3.1</td>
+<td class="num">1031</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nbrwalk_buckets</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9555</td>
+<td class="num">0.002</td>
+<td class="num">0.8806</td>
+<td class="num">19852</td>
+<td class="num">0.1</td>
+<td class="num">2.9</td>
+<td class="num">1004</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nbrwalk_pq_dfs</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9778</td>
+<td class="num">0.027</td>
+<td class="num">13.8192</td>
+<td class="num">267990</td>
+<td class="num">0.2</td>
+<td class="num">2.9</td>
+<td class="num">1021</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nbrwalk_rowcap8</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9805</td>
+<td class="num">0.035</td>
+<td class="num">0.5064</td>
+<td class="num">24176</td>
+<td class="num">0.1</td>
+<td class="num">3.8</td>
+<td class="num">1019</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nesterov_lr0.1_const</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9982</td>
+<td class="num">0.554</td>
+<td class="num">0.0125</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">17.2</td>
+<td class="num">1006</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">nesterov_lr1.0_linear</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9591</td>
+<td class="num">0.344</td>
+<td class="num">3911.0583</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">19.1</td>
+<td class="num">1003</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_adam</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.6909</td>
+<td class="num">-0.010</td>
+<td class="num">91.5154</td>
+<td class="num">75334</td>
+<td class="num">0.9</td>
+<td class="num">3.0</td>
+<td class="num">1024</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_momentum</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9248</td>
+<td class="num">0.117</td>
+<td class="num">15193.3398</td>
+<td class="num">75334</td>
+<td class="num">0.8</td>
+<td class="num">2.9</td>
+<td class="num">1033</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_nesterov</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9815</td>
+<td class="num">0.157</td>
+<td class="num">223.3235</td>
+<td class="num">75334</td>
+<td class="num">0.7</td>
+<td class="num">3.0</td>
+<td class="num">1017</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_plain</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9957</td>
+<td class="num">0.373</td>
+<td class="num">2.6814</td>
+<td class="num">75334</td>
+<td class="num">0.7</td>
+<td class="num">3.0</td>
+<td class="num">1005</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_sgd</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9873</td>
+<td class="num">0.268</td>
+<td class="num">5.8307</td>
+<td class="num">75334</td>
+<td class="num">0.7</td>
+<td class="num">3.1</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_sqn</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9956</td>
+<td class="num">0.357</td>
+<td class="num">3.8091</td>
+<td class="num">75334</td>
+<td class="num">0.7</td>
+<td class="num">3.5</td>
+<td class="num">1030</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">smoke_velocity</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9933</td>
+<td class="num">0.356</td>
+<td class="num">4.8826</td>
+<td class="num">75334</td>
+<td class="num">0.8</td>
+<td class="num">3.0</td>
+<td class="num">1009</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">walk_buckets</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9291</td>
+<td class="num">0.146</td>
+<td class="num">1.3680</td>
+<td class="num">28300</td>
+<td class="num">0.7</td>
+<td class="num">3.6</td>
+<td class="num">1014</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">walk_buckets_far</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9938</td>
+<td class="num">0.321</td>
+<td class="num">3.9888</td>
+<td class="num">46890</td>
+<td class="num">0.7</td>
+<td class="num">3.0</td>
+<td class="num">1022</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">walk_pq_bfs</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9916</td>
+<td class="num">0.310</td>
+<td class="num">3.8582</td>
+<td class="num">73690</td>
+<td class="num">0.8</td>
+<td class="num">3.0</td>
+<td class="num">1017</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">walk_pq_dfs</td><td>cora</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9942</td>
+<td class="num">0.296</td>
+<td class="num">3.8089</td>
+<td class="num">75804</td>
+<td class="num">0.9</td>
+<td class="num">2.8</td>
+<td class="num">1012</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--ok)">
+<td class="mono">yt1M_fused</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--ok)">done</span></td>
+<td class="num">0.9978</td>
+<td class="num">0.436</td>
+<td class="num">0.0497</td>
+<td class="num">23163843</td>
+<td class="num">22.1</td>
+<td class="num">463.0</td>
+<td class="num">4374</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">A_lrscan_momentum_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">8.7</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">A_lrscan_nesterov_lr1.0</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">9.0</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">const_momentum_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">19.0</td>
+<td class="num">877</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">const_momentum_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">12.2</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">const_nesterov_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">10.4</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">const_nesterov_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">17.7</td>
+<td class="num">877</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">decay_momentum_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">16.8</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">decay_momentum_lr0.999</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.2</td>
+<td class="num">17.0</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--div)">
+<td class="mono">momentum_lr1.0_linear</td><td>cora</td>
+<td><span class="chip" style="background:var(--div)">diverged</span></td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">&mdash;</td>
+<td class="num">209542</td>
+<td class="num">0.1</td>
+<td class="num">17.3</td>
+<td class="num">878</td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--run)">
+<td class="mono">B_cap_dir_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--run)">running</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--fail)">
+<td class="mono">driver_1m</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--fail)">failed</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--fail)">
+<td class="mono">driver_cora</td><td>com_youtube</td>
+<td><span class="chip" style="background:var(--fail)">failed</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--fail)">
+<td class="mono">smoke_fa2</td><td>cora</td>
+<td><span class="chip" style="background:var(--fail)">failed</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_dir_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_dir_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_dir_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_sym_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_sym_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_buckets_sym_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_cap_dir_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_cap_dir_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_cap_sym_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">B_cap_sym_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_far_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_far_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_far_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_nofar_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_nofar_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">C_buckets_nofar_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p0.5_q1.0_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p0.5_q1.0_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p0.5_q1.0_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q0.5_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q0.5_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q0.5_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q1.0_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q1.0_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q1.0_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q2.0_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q2.0_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p1.0_q2.0_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p2.0_q1.0_s42</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p2.0_q1.0_s56</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">D_p2.0_q1.0_s88</td><td>pubmed</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_adam_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_adam_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_fa2_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_fa2_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_plain_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_plain_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_sgd_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_sgd_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_sqn_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_sqn_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_velocity_lr0.1</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+<tr class="stripe" style="border-left-color:var(--pend)">
+<td class="mono">const_velocity_lr0.9</td><td>cora</td>
+<td><span class="chip" style="background:var(--pend)">pending</span></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num"></td>
+</tr>
+</tbody></table></div></div>

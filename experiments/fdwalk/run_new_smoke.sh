@@ -7,7 +7,9 @@ mkdir -p $OUT
 run () { name=$1; shift
   .venv/bin/python experiments/fdwalk/bench_fdwalk.py --graph cora \
     --weight min_gap --dim 32 --epochs 40 --seed 42 "$@" > $OUT/$name.log 2>&1
-  printf "%-26s %s\n" "$name" "$(grep -oE 'dnnz=[0-9]+|auc=[0-9.]+|r2_dist=[0-9.-]+|policy=[a-z]+|far_pairs.:. ?[0-9]+' $OUT/$name.log | tr '\n' ' ')"
+  # CLAUDE.md: peak memory and the runtime of each stage are REQUIRED in
+  # every report, thus they are in this line and cannot be left out of it.
+  printf "%-26s %s\n" "$name" "$(grep -oE 'dnnz=[0-9]+|t_aug=[0-9.]+|t_embed=[0-9.]+|rss=[0-9]+|auc=[0-9.]+|r2_dist=[0-9.-]+|dz=[0-9.]+|policy=[a-z]+' $OUT/$name.log | tr '\n' ' ')"
   grep -qE "Error|Traceback" $OUT/$name.log && echo "   ^^ FAILED: $(grep -m1 -E 'Error|error:' $OUT/$name.log)"
 }
 run nbrwalk_base      --pairs nbr_walk --force fdlinear --lr 0.1

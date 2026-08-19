@@ -1,1 +1,8 @@
 nbrwalk_base               dnnz=209542 auc=0.9651 r2_dist=0.019 policy=cap 
+nbrwalk_buckets            dnnz=19852 auc=0.9555 r2_dist=0.002 policy=buckets 
+nbrwalk_rowcap8            dnnz=24176 auc=0.9805 r2_dist=0.035 policy=cap 
+walk_buckets               dnnz=28300 auc=0.9291 r2_dist=0.146 policy=buckets 
+walk_buckets_far           dnnz=46890 auc=0.9938 r2_dist=0.321 policy=buckets 
+walk_pq_dfs                dnnz=75804 auc=0.9942 r2_dist=0.296 policy=cap 
+walk_pq_bfs                dnnz=73690 auc=0.9916 r2_dist=0.310 policy=cap 
+nbrwalk_pq_dfs             dnnz=267990 auc=0.9778 r2_dist=0.027 policy=cap 

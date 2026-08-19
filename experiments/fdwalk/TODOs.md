@@ -179,6 +179,170 @@ MEMORY method first (`D.nnz`, peak RSS) and a quality method second.
   baseline, which uses `p = q = 1` and would then differ from us on the
   walk as well as the embedder. State that as a confound if it happens.
 
+### P1 -- `edge_sampling`, edge sampling during embedding (requested 2026-08-18)
+
+**The idea, as stated by the user.** At the start of the embedding, use
+every `h = 1` and `h = 2` pair plus a random subset of the longer pairs,
+resampled EACH EPOCH, thus the early layout works on the local topology. As
+the embedding proceeds, the portion of long pairs RISES and the portion of
+local pairs FALLS. Expected: lower memory and lower runtime, with small
+changes in the other metrics.
+
+**The name: `edge_sampling`, "edge sampling during embedding".**
+Decision of the user, 2026-08-18.
+
+**A rename, with its reason, because the first name was wrong.** I first
+proposed `shell_anneal`, on the argument that `shell` is the project's word
+for the level set `S_h(u)`. **The user rejected it, and the rejection is
+correct:** fdwalk is a WALK-based method and it has diverged from the
+shell/k-ball formulation by miles. `h` here is a walk gap, not a shell
+index, and `fdlinear` reads no `shell_coeff` at all -- the plane was
+removed on 2026-08-17 precisely because the law never used it. A name
+carrying `shell` would point at the abandoned formulation. The earlier name
+is kept in this record and is used nowhere in the code.
+
+**What the name says.** The sampling happens during the EMBEDDING, and not
+during the augmentation. That is the whole distinction: every policy of
+this branch so far (`cap`, `buckets`, `low_deg`, `row_cap`) decides the
+edge set ONE time, before the first epoch. This one decides it again at
+every epoch.
+
+**Where it belongs.** This is axis D3 of PLAN.md generalised: "D1 for the
+near pairs, and fresh negative pairs for each epoch, as LargeVis and UMAP
+do". D3 has a FIXED mixing ratio; `edge_sampling` puts a schedule on it,
+and adds a per-band budget.
+
+#### Trap 1 -- FATAL as stated: the attraction lives ONLY at `h = 1`
+
+**"local edges decrease" cannot include `h = 1`.** In every force law of
+this project the attraction is zero for `h > 1`:
+
+* `shell_force`: `guard = where(h > 1, 0, 1)`, and `Fa` is multiplied by it.
+  Provenance: [shell_force.py:179](../../fodined/embedding/shell_force.py#L179)
+* `fdlinear`: `Fa = where(near & live, k1*x, 0)` with `near = h <= 1`.
+  Provenance: [force_fdlinear.py:127](../force_fdlinear.py#L127)
+
+Thus a schedule that removes `h = 1` pairs removes ALL attraction, and a
+layout with repulsion only expands without a limit.
+
+**And it fails SILENTLY, which is worse.** `degrees_from_D` counts the
+`h == 1` entries of a row; a row that loses them returns 0, `inv_deg_ext`
+turns that into 0.0, and the kernel multiplies the WHOLE row force by it.
+The node freezes where it stands and nothing raises an error. This is the
+identical trap that `low_deg` hit on 2026-08-17.
+Provenance: [shell_force.py:135](../../fodined/embedding/shell_force.py#L135)
+
+**Therefore the schedule anneals `h >= 2` ONLY.** `h = 1` is resident for
+every epoch. The `h = 2` share may fall, the long share may rise, and the
+adjacency never moves. Any variant that drops `h = 1` must first change the
+force law, and that is a different experiment.
+
+#### Trap 2 -- "all h=2" must mean the WALK GAP, not the true 2-hop ball
+
+If `h = 2` means the true 2-hop neighbourhood, this is the k-ball at
+`k = 2`, which is **the policy this branch abandoned**: 2.5 G pairs and
+50 GB on com_youtube, because the ball follows the hub degree.
+
+In fdwalk `h` is the MINIMUM WALK GAP, thus the set `h <= 2` is bounded by
+the walk budget `n_walks * walk_len` and is a SUBSET of the true 2-ball.
+That is feasible. **The item is only feasible under the walk-gap reading,
+and the implementation must assert which one it uses.**
+
+#### The design: a per-band edge budget, fixed to the SELL-C-sigma slots
+
+Requirement of the user, 2026-08-18: **respect an allowed number of edges
+for each set, so that the SELL-C-sigma memory optimisation holds.** This is
+the right constraint, and it resolves trap 3 below rather than merely
+avoiding it.
+
+A fixed row width is what the layout wants. `row_cap` already measures it:
+a cap of `m` gives a maximum row width of exactly `m` and exactly `n * m`
+entries, thus `n_split` falls to 0, `pad_frac` falls from 0.154 toward 0,
+and the batches balance. Provenance: [walks.py](../walks.py), `row_cap`.
+
+**But a fixed row width and trap 1 are in direct conflict, and the conflict
+must be resolved in the design and not discovered in a run.** Trap 1 says
+every `h = 1` entry stays resident. A hub of com_youtube has degree 28,754.
+No fixed row width `m` of a useful size holds that.
+
+**The resolution: TWO plans, both built one time.**
+
+    D_near      every h = 1 pair. Resident, never resampled, built once.
+                5,975,248 entries at 1.13M nodes -- the adjacency, and the
+                cheap part.
+    D_sampled   a FIXED budget of `m` slots for each row, refilled each
+                epoch from the h >= 2 pairs by the schedule.
+                n * m entries, exactly, by construction.
+
+    dZ = dZ_near + dZ_sampled
+
+Both plans have a FIXED geometry, thus neither is ever rebuilt: only the
+`nbrs` indices and the plane values of `D_sampled` change per epoch, and
+their SHAPES do not. The force law is a sum over the stored pairs of a row,
+thus splitting the sum across two plans is exact -- the same property that
+permits the chunking of axis D1.
+
+**What it saves, in arithmetic, at 1.13M nodes.** Today `nbr_walk/both`
+holds 23,163,843 entries. The adjacency is 5,975,248 of them. At `m = 8`:
+
+    5,975,248 + 1,134,890 * 8 = 15,054,368 entries, a fall of 35%
+
+and, more importantly, **the `h >= 2` set is never materialised in full**,
+which is the part that matters because a freed object does not lower a
+high-water RSS.
+
+**One consequence to carry:** with `D_near` and `D_sampled` separate, the
+force-law degree must come from `A` and not from a count over one of the
+two matrices. `--deg-source A` already does exactly this, and it exists for
+the `low_deg` trap. Reuse it; do not re-derive it.
+
+#### Trap 3 -- a naive implementation would RAISE the runtime
+
+Resampling the long pairs each epoch changes the sparsity pattern, and the
+SELL-C-sigma plan BAKES IN the neighbour indices. A naive form rebuilds the
+plan every epoch, which would RAISE the runtime and contradict the
+expectation. The plan build is a large part of the 3583 -> 4374 MB step at
+1.13M nodes.
+
+**The form that can deliver both claims:** build the plan ONE time with the
+resident `h <= 2` pairs plus a FIXED slot budget for the long pairs, and
+each epoch refill only those slots -- same `nnz`, same tile shapes, same
+plan, only the `nbrs` and the plane values change in the far slots. Then
+the peak never holds the whole long-pair set, and no replanning happens.
+
+**A lesson that applies directly**, from 2026-08-17: freeing an object does
+NOT lower a peak RSS, because RSS is a high-water mark. **Only memory never
+allocated counts.** Thus the long pairs must never be materialised in full,
+not merely freed after use.
+
+#### The items
+
+- [ ] **Fix the reading of `h` and the resident set.** Assert walk-gap
+  semantics; `h = 1` resident for every epoch.
+- [ ] **Implement the two-plan form** above: `D_near` resident, `D_sampled`
+  at a fixed `n * m` budget, both planned one time, `dZ` summed.
+- [ ] **Choose the per-band split of `m`.** How many of the `m` slots go to
+  `h = 2`, to `h = 3`, and to the long pairs, and how that split MOVES with
+  the epoch. This is the schedule, and it is the experiment.
+- [ ] **Choose the schedule shape** and record it in `CATALOG.md` before
+  running: linear, cosine, or step, over what fraction of the epochs, and
+  whether the TOTAL pair count is constant (a crossfade) or falls.
+  A constant total is the form that keeps the memory flat and makes the
+  saving come from never materialising the long set.
+- [ ] **Guard, required, from G1 finding 1:** log the count of `h = 1`
+  entries in EVERY epoch. If it falls, stop. `mean_gap` collapsed from a
+  version of this defect and the run reported an AUC rather than an error.
+- [ ] **Cora, then PubMed, 3 seeds**, against `plain` at a fixed pair set.
+  GATE: AUC and hop R2 within the 1.5% floor of the fixed-set run, with a
+  MEASURED fall in peak RSS and in the runtime of each stage.
+- [ ] **1.13M.** This is where the claim is worth something. GATE: peak RSS
+  below the 4374 MB of the fused-plane run, and the wall clock below 11:20.
+- [ ] **Measure `pad_frac` and `n_split` of `D_sampled`.** The fixed row
+  width predicts `n_split = 0` and `pad_frac` near 0, against 0.154 today.
+  If that does not happen, the SELL-C-sigma benefit is not being taken.
+- [ ] **Record it as a `gradient update schedule` entity** in `CATALOG.md`,
+  which is the category `CLAUDE.md` names for it.
+
 ### P1 -- attribution, which is owed from 2026-08-17
 
 - [ ] **Decompose the four-change combination at 1.13M.**

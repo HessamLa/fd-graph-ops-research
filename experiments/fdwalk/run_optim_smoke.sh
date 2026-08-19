@@ -8,5 +8,5 @@ for o in plain velocity sgd sqn momentum nesterov adam fa2; do
   .venv/bin/python experiments/fdwalk/bench_fdwalk.py \
     --graph cora --pairs walk --weight min_gap --optim "$o" \
     --dim 32 --epochs 60 --lr 1.0 --seed 42 > $OUT/smoke_$o.log 2>&1
-  printf "%-9s %s\n" "$o" "$(grep -oE 'auc=[0-9.]+|r2_dist=[0-9.-]+|final \|\|dZ\|\| avg [0-9.e+-]+|state arrays' $OUT/smoke_$o.log | tr '\n' ' ')"
+  printf "%-9s %s\n" "$o" "$(grep -oE 'auc=[0-9.]+|r2_dist=[0-9.-]+|t_aug=[0-9.]+|t_embed=[0-9.]+|rss=[0-9]+|final \|\|dZ\|\| avg [0-9.e+-]+|state arrays' $OUT/smoke_$o.log | tr '\n' ' ')"
 done

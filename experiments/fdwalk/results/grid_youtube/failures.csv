@@ -1,0 +1,14 @@
+config,outcome,peak_rss_mb,wall,died_after
+Y_A_adam_decay_s42,killed sig9,9521,0:38.00,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_A_momentum_const_s42,killed sig9,9587,0:37.72,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_A_nesterov_const_s42,killed sig9,9594,0:38.32,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_A_plain_const_s42,killed sig9,9491,0:39.21,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_A_plain_decay_s42,killed sig9,9482,0:36.65,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_A_velocity_const_s42,killed sig9,9555,0:38.01,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_B_buckets_dir_s42,killed sig9,9422,1:04.04,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (2.1s)"
+Y_B_buckets_sym_s42,ok,7844,1:59:35,
+Y_B_cap_dir_s42,ok,9005,11:52.64,
+Y_B_cap_sym_s42,ok,7987,1:58:39,
+Y_C_buckets_far_s42,ok,8038,1:58:08,
+Y_D_p0.5_q1.0_s42,killed sig9,9530,0:56.69,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"
+Y_D_p2.0_q1.0_s42,killed sig9,9596,0:47.44,"com_youtube: n=1134890 nodes, 2987624 undirected edges, avg degree 5.27, max degree 28754 (1.1s)"

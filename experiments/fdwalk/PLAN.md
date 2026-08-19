@@ -473,3 +473,47 @@ The last row is the only open item of this update. Three claims were
 written without the number that produced them, thus the tighter floor
 cannot be applied to them from the document alone. The runs exist in
 `results/`, thus the re-check is arithmetic and not a new experiment.
+
+---
+
+## UPDATE 2026-08-18T01:30 -- the noise floor moves from 1% to 1.5%
+
+**Reason.** `experiments/fdwalk/CLAUDE.md` now states "A gain of 1.5% or
+less is noise". This supersedes the 1% rule of 2026-08-17T23:25, which
+superseded the 2% rule of 2026-08-16T00:20. **Neither earlier text is
+removed**: every verdict was judged against the floor in force when it was
+measured, and a reader must be able to see which one applied.
+
+**The rule now.** A gain counts only if it passes BOTH `delta/old > 1.5%`
+AND `delta > the spread across seeds`.
+
+**Adopted at:** every measurement from 2026-08-18T01:30 forward.
+
+**Which verdicts the change flips: NONE.** Every recorded number sits
+outside the 1.0..1.5% band in one direction or the other.
+
+| Verdict | Number | 2% | 1% | 1.5% | Status |
+| --- | --- | --- | --- | --- | --- |
+| node2vec AUC vs `nbr_walk`, dim 64 | +0.14% | noise | noise | noise | a TIE |
+| 100% adjacency repairs the 0.90 AUC | +0.4% | noise | noise | noise | refuted |
+| `walk` vs `walk_edges`, Cora | +0.02% | noise | noise | noise | a tie |
+| `v1`+buckets vs `v2`+buckets, AUC | +0.60% | noise | noise | noise | a tie |
+| `v2`+cap vs `v2`+buckets, AUC | +0.07% | noise | noise | noise | a tie |
+| landmarks | no gain | noise | noise | noise | rejected |
+| `sqn` vs `plain`, AUC (Cora, lr 1.0) | -0.01% | noise | noise | noise | a tie |
+| `velocity` vs `plain`, AUC | -0.24% | noise | noise | noise | a tie |
+| far pairs at `deg^0.75` | +3.9% | real | real | real | holds |
+| `low_deg` costs the hop R2 | -64% | real | real | real | holds |
+| fused planes, peak RSS | -8.9% | real | real | real | holds |
+| `sqn` embed time | +17% | real | real | real | holds |
+| `cap` -> `buckets`, hop R2 | -73% | real | real | real | holds |
+
+**One entry that needs a note rather than a row.** The peak RSS of the
+optimizer smoke spans 1005..1033 MB, which is 2.8%, thus it is ABOVE the
+new floor and the floor alone would call it real. **It is not real, and the
+reason is mechanical and not statistical:** at n = 2,708 and dim 32 one
+state array is 346 kB, thus `sqn`'s eight are 2.8 MB and cannot make a
+28 MB difference. The ordering also does not follow the state count --
+`momentum` holds ONE array and shows the HIGHEST peak, 1033 MB, while `sqn`
+holds EIGHT and shows 1030 MB. A floor is a filter and not a substitute for
+a mechanism; this row is dismissed on the mechanism.

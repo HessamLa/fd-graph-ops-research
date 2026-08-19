@@ -1,0 +1,23 @@
+	Command being timed: ".venv/bin/python experiments/fdwalk/bench_fdwalk.py --graph com_youtube --weight min_gap --dim 64 --epochs 500 --far 2270000 --far-bias 0.75 --far-weight 100 --chunks 8 --chunk-host --force fdlinear --k4 1.0 --kr 1.0 --pairs nbr_walk --row-cap 16 --optim plain --lr 0.999 --lr-decay linear --seed 42"
+	User time (seconds): 970.46
+	System time (seconds): 353.65
+	Percent of CPU this job got: 185%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 11:52.64
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 9221392
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 6333
+	Minor (reclaiming a frame) page faults: 2879161
+	Voluntary context switches: 1438645
+	Involuntary context switches: 216055
+	Swaps: 0
+	File system inputs: 1484264
+	File system outputs: 6248
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
