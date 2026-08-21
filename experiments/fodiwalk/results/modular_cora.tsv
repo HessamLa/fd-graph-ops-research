@@ -1,0 +1,2 @@
+[fodiwalk] RESULT	graph=cora	pairs=ball	weight=exact	force=fdlinear	optim=plain	seed=42	n=2708	dnnz=115478	dim=128	epochs=2000	lr=1.0	t_load=0.0	t_aug=0.5	t_embed=8.4	dz=0.0157	acc=0.9740	f1=0.9739	auc=0.9932	r2_dist=0.634	mae_dist=0.965	r2_vec=0.770	h2_exact=na	diverged=0	rss=1021
+[fodiwalk] RESULT	graph=cora	pairs=ball	weight=exact	force=fdlinear	optim=plain	seed=42	n=2708	dnnz=362728	dim=128	epochs=2000	lr=1.0	t_load=0.0	t_aug=0.6	t_embed=12.9	dz=0.0180	acc=0.9759	f1=0.9758	auc=0.9959	r2_dist=0.623	mae_dist=0.981	r2_vec=0.783	h2_exact=na	diverged=0	rss=1016

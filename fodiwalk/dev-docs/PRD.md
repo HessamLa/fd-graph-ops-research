@@ -75,7 +75,7 @@ fodiwalk/
   docs/
     PRD.md  ORCHESTRATION.md
   tests/
-    test_parity.py  test_contracts.py  test_smoke.py
+    test_parity.py  test_contracts.py  test_smoke.py ...other tests
 ```
 
 ## 5. What else belongs in core -- the answer to the open question
@@ -336,6 +336,14 @@ planes cannot be produced.
    build one -- the defect of 2026-08-18, which silently ran `v1` physics
    under an `fdlinear` label.
 3. `fit` raises `NotImplementedError` with a message naming the project.
+
+---
+
+### B9. `tests/`
+
+**Contents.** test scripts
+
+Test the functioning of the module. Compare tests against some of the experiment scripts under `experiments/fdwalk/`. Use small graph such as Cora.
 
 ---
 

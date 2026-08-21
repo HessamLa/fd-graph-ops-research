@@ -1,0 +1,1 @@
+[fodiwalk] RESULT	graph=cora	pairs=walk	weight=min_gap	force=fdlinear	optim=plain	seed=42	n=2708	dnnz=75334	dim=128	epochs=2000	lr=1.0	t_load=0.0	t_aug=0.9	t_embed=8.2	dz=0.0153	acc=0.9702	f1=0.9702	auc=0.9956	r2_dist=0.648	mae_dist=0.891	r2_vec=0.766	h2_exact=0.981	diverged=0	rss=1026
