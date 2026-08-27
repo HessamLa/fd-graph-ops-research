@@ -195,13 +195,14 @@ def test_b8_every_policy_builds_a_freq_for_fdlinear(tiny):
                 pairs, policy)
 
 
-def test_b8_make_graph_is_a_stub_and_fit_raises(tiny):
-    """B8.3."""
+def test_b8_make_graph_is_a_stub_and_fit_does_not_exist(tiny):
+    """B8.3. `fit` was removed entirely (2026-08-21): `make_graph` is a
+    stub, thus a `fit` chaining it into `embed` promised a stage that was
+    never real."""
     A, n = tiny
     fw = _model()
     assert fw.make_graph(A) is A
-    with pytest.raises(NotImplementedError, match="fodiwalk"):
-        fw.fit(A)
+    assert not hasattr(fw, "fit")
 
 
 def test_b8_an_unknown_option_is_refused():

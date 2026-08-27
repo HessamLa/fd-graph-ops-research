@@ -53,6 +53,30 @@ def test_p1_fdlinear_on_cora_200_epochs(cora):
 
     `dz = 0.5016  auc = 0.9962  r2_dist = 0.253`, and the fused plane must
     give the same numbers as the three-plane reference.
+
+    The tight `abs=5e-5` tolerances hold because of the PLAN, and not
+    because the graph is Cora. A row wider than `k_max` splits into virtual
+    rows that share an owner id, and `dZ.at[rows].add(...)` then
+    accumulates in a free order on a GPU.
+
+    `n_split == 0` is asserted below as a CONSERVATIVE PROXY. The real
+    invariant is `max in-batch owner multiplicity < 3`: three addends
+    landing on one address cost exactness, and splitting alone does not.
+    `n_split == 0` forces multiplicity 1, thus it IMPLIES the real
+    condition; it is not equivalent to it. `forcedirected/PARITY.md`
+    section 5 is the proof -- an augmented Cora `D` at `n_split = 3` with
+    multiplicity 2 was bit-identical at 0.000e+00. The proxy is used
+    because `n_split` is already in `plan_stats` and the multiplicity is
+    not.
+
+    THUS, WHEN THIS ASSERT FAILS: re-measure the multiplicity. Do NOT
+    relax the tolerances, and do NOT delete the assert. A legitimate change
+    can reach `n_split = 2` with multiplicity still 2 and stay exact; the
+    repair is then to assert the multiplicity directly, as
+    `forcedirected/tests/test_parity.py` does with `max_owner_multiplicity`.
+    Without the guard, such a change surfaces as an `acc`/`f1` mismatch and
+    reads as a defect of the physics, which is the wrong diagnosis this
+    scenario must not invite.
     """
     A, n = cora
     for fuse_planes in (False, True):
@@ -60,6 +84,8 @@ def test_p1_fdlinear_on_cora_200_epochs(cora):
                   pairs="nbr_walk", weight="min_gap", force="fdlinear",
                   k4=0.01, kr=1.0, fuse_planes=fuse_planes)
         assert out["dnnz"] == 209_542
+        # The precondition of every tolerance below. See the docstring.
+        assert out["plan"]["n_split"] == 0
         assert out["plan"]["pad_frac"] == pytest.approx(0.20059361671282838)
         assert out["dz"] == pytest.approx(0.5016, abs=5e-5)
         assert out["acc"] == pytest.approx(0.9754, abs=5e-5)

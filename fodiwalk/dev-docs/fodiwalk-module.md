@@ -22,7 +22,7 @@ In graph construction data is loaded, prepared into graph and its accompanying d
 
 In Graph augmentation, graph is recieved (with its accompanying data if exists). Depending on the donwstream embedding configuration, the graph is augmented and updated by adding more edges or selecting node pairs or taging edges etc.
 
-In Graph embedding, an optimized sparse graph operations engine, the force functions are applied on graph elements and the embeddings are generated.
+In Graph embedding, an optimized sparse graph operations engine, the force functions are applied on graph elements and the embeddings are generated. This stage shall not do any graph analysis or data perapration. It must only consume the data. Its main goal is to apply the force function on the input data using the best implementation to optimize resource utilization.
 
 These categories must be respected to make the code readable and traceable, and not turn into a slop.
 

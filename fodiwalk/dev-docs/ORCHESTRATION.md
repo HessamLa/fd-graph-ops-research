@@ -267,3 +267,106 @@ For every agent, in this order:
 4. `fodiwalk/tests/` passes.
 5. `experiments/fodiwalk/` is untouched and still runnable, so the campaign
    is never blocked by the refactor.
+
+---
+
+## 6. The SECOND orchestration -- the split of the god class, 2026-08-20
+
+Section 3 records how the package was BUILT. This section records how it
+was RESHAPED. The plan is [REFACTOR.md](REFACTOR.md): ten defects, a target
+tree, thirteen traps, ten gates G1-G10 and five milestones M0-M4.
+
+**The difference from the first orchestration.** The first one had a
+parity table as its gate and it built new code from a script. This one
+moves EXISTING code and must not change one number, thus the gate had to
+be cheap enough to run between two edits. That gate is `tests/golden.py`,
+and the master wrote it BEFORE any agent was dispatched.
+
+### 6.1 M0 -- the master, before any dispatch
+
+| what | why |
+| --- | --- |
+| `tests/golden.py` and `golden_baseline.json` | the byte-exact record of 16 augment cases and 4 CPU embed runs, taken from the tree as it was. A refactor compares against it, and not against itself |
+| the commit `89abaf2`, tag `fodiwalk-pre-refactor` | the revert point. The package was untracked in git until then |
+| `dev-docs/REFACTOR.md` | the brief every agent reads |
+| `tests/check_api.py`, gate G3 | written by a peer session and verified by the master. It planted three ghost names as a negative control, and the check reported them |
+
+**One DEADEND is recorded and it shaped the gate.** A sha1 of `Z` is too
+sharp a tool: the same run differs in the last bit between two processes on
+the CPU backend. The embed half therefore compares five scalars at
+`rtol = 1e-4`, and the augment half -- pure NumPy -- stays byte exact.
+
+### 6.2 The five agents
+
+| agent | owns | model | gate |
+| --- | --- | --- | --- |
+| A1 `01.augment-agent` | `augment_graph/`: `result.py`, `policies.py`, `policy_walk.py`, `policy_buckets.py`, `policy_nbr_walk.py`, `merge.py` | opus | its own equivalence test against the old methods on the 16 golden cases, plus G1 unchanged |
+| A2 `02.embed-agent` | `embed/`: `planes.py`, `degrees.py`, `planner.py`, and `core` publishes `step` | opus | the same, on the plane, degree and plan seams |
+| A3 `03.integration-agent` | `config.py`, `model.py`; `fodiwalk.py` and `models/` deleted | opus | G1 to G8 |
+| A4 `04.structure-agent` | `tests/`: the new shape as a TEST | opus | G4, G5, G6, G7, G8 as tests |
+| A5 `05.docs-agent` | `CATALOG.md`, `README.md`, `BUILD.md`, `ORCHESTRATION.md` | opus | G9, and every snippet it writes must RUN |
+
+The master log records the model at each dispatch. A4 and A5 were
+dispatched together at M3, and A5 wrote this section while A4 ran; correct
+the A4 row from the master log if it differs.
+
+### 6.3 The structure -- what ran in parallel, and what could not
+
+```
+M0  master        golden.py, the tag, REFACTOR.md, check_api.py
+                              |
+M1  A1 -----------------------+---------------------- A2      PARALLEL
+    augment_graph/            |                       embed/
+    NEW FILES ONLY. fodiwalk.py stays and still runs the package.
+                              |
+M2  A3                        |                                SEQUENTIAL
+    wires both, deletes the god class. The gates then say
+    whether the wiring is right.
+                              |
+M3  A4 -----------------------+---------------------- A5      PARALLEL
+    the structure tests       |                       the documents
+                              |
+M4  master        independent re-run of G1-G9, and the GPU gate G10
+```
+
+**Why M1 is parallel and M2 is not.** A1 and A2 got DISJOINT files and no
+shared state. Each one proved its new code EQUALS the old method, on the
+same 16 golden cases, while the old method was still there to compare
+against -- 17 equivalence tests for A1 and 66 for A2. Nothing was wired,
+thus neither agent could break the other or the package. M2 is one agent
+because deleting the god class is one atomic step: it is the step where the
+refactor lands or breaks.
+
+**Why M3 is parallel.** The tests and the documents read the same tree and
+write different files. Neither changes a `.py` file of the package.
+
+### 6.4 How the master judged a return
+
+The rule of section 4 held: **an agent's report of its own success is
+evidence, and not proof.** Every claim was re-run by the master.
+
+| the claim | the master's verification |
+| --- | --- |
+| A2: 66 equivalence tests pass, `core` touched only to publish `step` | re-ran: 66 passed, `GOLDEN OK`. Read `git diff fodiwalk/core/`: a rename plus a `_step = step` alias, and nothing else |
+| A1: 17 equivalence tests, 136 in the suite, the far merge written once | re-ran: 136 passed, `GOLDEN OK`, `check_api` OK, `fodiwalk.py` untouched. Read `merge.py`: the COO order kept and documented |
+| A3: the wiring is complete and the behaviour is unchanged | re-ran after the delete: `GOLDEN OK (both)`, `53 passed, 2 skipped, 9 deselected`, `check_api` exit 0, `model.py` 200 lines, no dispatch chain in `model.py` |
+
+**Two open items came out of the returns and both are recorded, not
+hidden.** `augment_graph/walks.py` is 422 lines and breaks the 300-line
+rule of G4; it is pre-existing and belonged to no agent of this
+orchestration. And REFACTOR.md section 5.1 said `Config` had 41 fields; the
+tree and the tag both hold 39, thus the DOCUMENT was wrong and it was
+corrected. `CATALOG.md` section 19.10 lists every place where the code and
+REFACTOR.md disagree.
+
+### 6.5 Definition of done, for the split
+
+1. `GOLDEN OK (both)` -- the augment half BYTE EXACT.
+2. The suite passes with no failure and no error.
+3. `check_api` exits 0: `Config`, the methods, the attributes and the key
+   sets did not move.
+4. `fodiwalk/fodiwalk.py` and `fodiwalk/models/` are gone, and no module
+   imports a `_private` name of another module.
+5. `CATALOG.md` holds a NEW numbered section, and nothing was removed from
+   it.
+6. The GPU parity gate G10, by the master, at the end.

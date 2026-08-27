@@ -9,8 +9,8 @@ Graph: com_youtube from SNAP. 1,134,890 nodes and 2,987,624 edges. It is the
 smallest of the three SNAP graphs in `data_cache/`, and it has a power-law
 degree distribution.
 
-Three things are different from `experiments/other-ge/bench_other_ge.py`, and
-all three are necessary at this size:
+Two things are different from `experiments/other-ge/bench_other_ge.py`, and
+both are necessary at this size:
 
 1. The walks go to a FILE, and not to a list. 1.13M nodes with 5 walks of
    length 20 give 113M tokens. A list of Python strings for those tokens
@@ -19,17 +19,37 @@ all three are necessary at this size:
 2. The walks are shorter and fewer (5 x 20, and not 10 x 40), and the
    training uses 3 epochs, and not 5. The full setting needs more than an
    hour of CPU.
-3. The hop distances come from a LIMITED set of sources. An exact hop
-   distance for 20,000 random pairs needs about 20,000 BFS runs, and one BFS
-   on this graph needs 0.36 s: that is two hours. The sample therefore takes
-   its pairs from `--sp-sources` source nodes only.
+
+The link prediction and the hop-distance approximation come from
+`evaluator`, under the protocol name `n2v1m`. That protocol is a frozen
+record of what this script did: it caps the hop-distance sources at 200
+(`--sp-sources`) and reads their distances with a blocked, source-limited
+scipy BFS -- an exact hop distance for 20,000 random pairs needs about
+20,000 BFS runs, and one BFS on this graph needs 0.36 s: that is two hours.
+`evaluator.hops` blocks that BFS internally; this script never reimplements
+it. `node2vec_com_youtube_1M.log` is the reference log.
 
 The report gives the time of each stage, the peak memory, the link
 prediction, and the hop distance approximation.
 
+SMALL-GRAPH SMOKE PATH. `--graph cora` and `--graph pubmed` load a
+citation graph (2,708 and 19,717 nodes) through `evaluator.load_graph`
+instead of a SNAP file, thus the whole pipeline -- walks, training,
+gathering, and both tasks -- runs end to end in seconds on a machine that
+cannot hold a SNAP graph. The correctness of this script does not depend
+on the SIZE of the graph: the same `evaluator` code path serves every
+size, and `evaluator.hops` blocks its BFS internally. Thus a correct small
+run is the verification, and pubmed is the largest of them.
+
+`--graph` is REQUIRED and it has no default. It named `com_youtube` until
+2026-08-22, thus a bare run loaded 1.13M nodes with nothing to bound it.
+
 Run from the repo root (fdmap/):
 
-    .venv/bin/python experiments/large-graph-node2vec/bench_node2vec_1M.py
+    .venv/bin/python experiments/large-graph-node2vec/bench_node2vec_1M.py \
+        --graph pubmed
+    .venv/bin/python experiments/large-graph-node2vec/bench_node2vec_1M.py \
+        --graph com_youtube          # the sized run. 1.13M nodes, ~1 hour
 """
 from __future__ import annotations
 
@@ -46,9 +66,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 
+import evaluator as ev
+
 SNAP = {"com_youtube": "com_youtube/com-youtube.ungraph.txt",
         "as_skitter": "as_skitter/as-skitter.txt",
         "roadnet_ca": "roadnet_ca/roadNet-CA.txt"}
+PROTOCOL = "n2v1m"
+
+# The smoke graphs. They come from `evaluator.load_graph` and its dataset
+# registry, and not from a SNAP file. They are for development and for
+# verification; they are not the sized graphs this script measures.
+SMALL = ("cora", "pubmed")
 
 
 def rss_mb():
@@ -78,6 +106,15 @@ def load(graph):
     return A, n, time.perf_counter() - t
 
 
+def load_small(graph, seed):
+    """The `--graph cora` smoke path. Returns `(A, n, t_load)`, the same
+    shape as `load()`, via `evaluator.load_graph` and its dataset registry.
+    """
+    t = time.perf_counter()
+    A, n, _ = ev.load_graph(graph, seed=seed)
+    return A, n, time.perf_counter() - t
+
+
 def write_walks(A, n, path, n_walks, walk_len, seed, batch=200_000):
     """Uniform random walks, written to `path`, one walk per line.
 
@@ -104,32 +141,19 @@ def write_walks(A, n, path, n_walks, walk_len, seed, batch=200_000):
     return time.perf_counter() - t
 
 
-def sample_non_edges(A, n, count, rng, sources=None):
-    Ac = A.tocoo()
-    keys = np.sort(Ac.row.astype(np.int64) * n + Ac.col.astype(np.int64))
-    del Ac
-    u_all = np.empty(0, np.int64)
-    v_all = np.empty(0, np.int64)
-    while u_all.size < count:
-        draw = (count - u_all.size) * 2 + 1024
-        u = (rng.choice(sources, size=draw) if sources is not None
-             else rng.integers(0, n, draw))
-        v = rng.integers(0, n, draw)
-        ok = u != v
-        u, v = u[ok], v[ok]
-        k = u * n + v
-        pos = np.searchsorted(keys, k)
-        pos[pos >= keys.size] = 0
-        keep = keys[pos] != k
-        room = count - u_all.size
-        u_all = np.concatenate([u_all, u[keep][:room]])
-        v_all = np.concatenate([v_all, v[keep][:room]])
-    return np.column_stack([u_all, v_all])
-
-
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--graph", default="com_youtube", choices=list(SNAP))
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # REQUIRED, and it has NO default. The default was `com_youtube` until
+    # 2026-08-22. That graph has 1,134,890 nodes, thus a bare run of this
+    # script loaded it, and there is no `--max-nodes` here to bound it. A
+    # machine without the memory then swaps or dies, and the user asked for
+    # no such run. An explicit name costs one word and it removes the trap.
+    ap.add_argument("--graph", required=True,
+                    choices=list(SNAP) + list(SMALL),
+                    help="the graph. The SNAP names are LARGE "
+                         "(com_youtube is 1.13M nodes); cora and pubmed "
+                         "are the small verification graphs")
     ap.add_argument("--dim", type=int, default=128)
     ap.add_argument("--walks", type=int, default=5)
     ap.add_argument("--walk-len", type=int, default=20)
@@ -137,30 +161,29 @@ def main():
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--lp-pairs", type=int, default=40_000)
-    ap.add_argument("--sp-sources", type=int, default=200)
-    ap.add_argument("--sp-pairs", type=int, default=20_000)
+    ap.add_argument("--lp-pairs", type=int, default=None,
+                    help="link-prediction positive pairs (protocol "
+                         "n2v1m default: 40,000; unset uses the protocol)")
+    ap.add_argument("--sp-sources", type=int, default=None,
+                    help="hop-distance source nodes (protocol n2v1m "
+                         "default: 200; unset uses the protocol)")
+    ap.add_argument("--sp-pairs", type=int, default=None,
+                    help="hop-distance pairs (protocol n2v1m default: "
+                         "20,000; unset uses the protocol)")
     args = ap.parse_args()
 
     from gensim.models import Word2Vec
-    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-    from sklearn.neural_network import MLPRegressor
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                                 f1_score, roc_auc_score, mean_absolute_error,
-                                 mean_squared_error, r2_score,
-                                 mean_absolute_percentage_error)
-    from scipy.sparse.csgraph import shortest_path
 
-    A, n, t_load = load(args.graph)
+    if args.graph in SNAP:
+        A, n, t_load = load(args.graph)
+    else:
+        A, n, t_load = load_small(args.graph, args.seed)
     print(f"[n2v-1M] {args.graph}: n={n:,} nodes, {A.nnz//2:,} undirected "
           f"edges, avg degree {A.nnz/n:.2f} (load {t_load:.1f}s)", flush=True)
     print(f"[n2v-1M] settings: dim={args.dim}, {args.walks} walks x "
           f"{args.walk_len} steps, window={args.window}, "
           f"{args.epochs} epochs, {args.workers} workers", flush=True)
 
-    rng = np.random.default_rng(args.seed)
     with tempfile.TemporaryDirectory(prefix="walks_") as tmp:
         wp = os.path.join(tmp, "walks.txt")
         t_walk = write_walks(A, n, wp, args.walks, args.walk_len, args.seed)
@@ -191,77 +214,45 @@ def main():
           f"(load {t_load:.1f} + walks {t_walk:.1f} + train {t_train:.1f} "
           f"+ gather {t_gather:.1f}), peak RSS {rss_mb():.0f} MB", flush=True)
 
-    # ---- link prediction --------------------------------------------------
+    # ---- evaluation (evaluator, protocol n2v1m) ---------------------------
+    # A keyword left unset takes the protocol's value; passing one explicitly
+    # would set `protocol_modified` and break comparability to the baseline.
+    lp_kw = {} if args.lp_pairs is None else {"max_pairs": 2 * args.lp_pairs}
+    da_kw = {}
+    if args.sp_sources is not None:
+        da_kw["n_sources"] = args.sp_sources
+    if args.sp_pairs is not None:
+        da_kw["n_pairs"] = args.sp_pairs
+
     t = time.perf_counter()
-    up = sp.triu(A, k=1).tocoo()
-    take = rng.choice(up.row.size, min(args.lp_pairs, up.row.size),
-                      replace=False)
-    pos = np.column_stack([up.row[take], up.col[take]])
-    del up
-    neg = sample_non_edges(A, n, pos.shape[0], rng)
-    pairs = np.vstack([pos, neg])
-    X = Z[pairs[:, 0]] * Z[pairs[:, 1]]
-    y = np.concatenate([np.ones(pos.shape[0]), np.zeros(neg.shape[0])])
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2,
-                                          random_state=args.seed, stratify=y)
-    clf = RandomForestClassifier(n_estimators=100, random_state=args.seed,
-                                 n_jobs=-1).fit(Xtr, ytr)
-    pred, prob = clf.predict(Xte), clf.predict_proba(Xte)[:, 1]
-    print(f"[n2v-1M] link prediction on {X.shape[0]:,} pairs "
+    lp = ev.link_prediction(A, Z, protocol=PROTOCOL, seed=args.seed, **lp_kw)
+    print(f"[n2v-1M] link prediction on {lp.sizes['pairs']:,} pairs "
           f"({time.perf_counter()-t:.1f}s)", flush=True)
-    print(f"  accuracy : {accuracy_score(yte, pred):.4f}")
-    print(f"  precision: {precision_score(yte, pred, zero_division=0):.4f}")
-    print(f"  recall   : {recall_score(yte, pred, zero_division=0):.4f}")
-    print(f"  f1-score : {f1_score(yte, pred, zero_division=0):.4f}")
-    print(f"  auc      : {roc_auc_score(yte, prob):.4f}", flush=True)
+    print(f"  accuracy : {lp.scores['accuracy']:.4f}")
+    print(f"  precision: {lp.scores['precision']:.4f}")
+    print(f"  recall   : {lp.scores['recall']:.4f}")
+    print(f"  f1-score : {lp.scores['f1']:.4f}")
+    print(f"  auc      : {lp.scores['auc']:.4f}", flush=True)
 
-    # ---- hop distance approximation --------------------------------------
     t = time.perf_counter()
-    sources = rng.choice(n, size=args.sp_sources, replace=False)
-    pairs = sample_non_edges(A, n, args.sp_pairs, rng, sources=sources)
-    srcs = np.unique(pairs[:, 0])
-    chunk = max(4, int(200e6 / (n * 8)))
-    pos_of = np.searchsorted(srcs, pairs[:, 0])
-    hop = np.empty(pairs.shape[0])
-    for s in range(0, srcs.size, chunk):
-        blk = srcs[s:s + chunk]
-        d = shortest_path(A, method="D", unweighted=True, indices=blk)
-        m = (pos_of >= s) & (pos_of < s + blk.size)
-        hop[m] = d[pos_of[m] - s, pairs[m, 1]]
-    t_hop = time.perf_counter() - t
-    ok = np.isfinite(hop) & (hop > 1)
-    pairs, hop = pairs[ok], hop[ok]
-    print(f"[n2v-1M] hop distances for {hop.size:,} pairs from "
-          f"{srcs.size} sources ({t_hop:.1f}s), hops "
-          f"{hop.min():.0f}..{hop.max():.0f}", flush=True)
-
-    X = np.linalg.norm(Z[pairs[:, 0]] - Z[pairs[:, 1]], axis=1)[:, None]
-    Xtr, Xte, ytr, yte = train_test_split(X, hop, test_size=0.2,
-                                          random_state=args.seed)
-    sc = StandardScaler().fit(Xtr)
-
-    def report(name, p, secs=None):
-        print(f"  {name:>14s} {mean_absolute_error(yte, p):>8.3f} "
-              f"{mean_absolute_percentage_error(yte, p):>8.3f} "
-              f"{np.sqrt(mean_squared_error(yte, p)):>8.3f} "
-              f"{r2_score(yte, p):>8.3f} "
-              f"{np.mean(np.rint(p) == yte):>8.1%}"
-              f"{'' if secs is None else f'  ({secs:.1f}s)'}", flush=True)
-
+    da = ev.dist_approx(A, Z, protocol=PROTOCOL, seed=args.seed, **da_kw)
+    print(f"[n2v-1M] hop distances for {da.sizes['n_pairs']:,} pairs from "
+          f"{da.cfg['n_sources']} sources ({time.perf_counter()-t:.1f}s), "
+          f"hops {da.sizes['hop_min']:.0f}..{da.sizes['hop_max']:.0f}",
+          flush=True)
     print(f"  {'model':>14s} {'MAE':>8s} {'MRE':>8s} {'RMSE':>8s} "
           f"{'R2':>8s} {'exact':>8s}", flush=True)
-    report("mean baseline", np.full(yte.shape, ytr.mean()))
-    t = time.perf_counter()
-    rf = RandomForestRegressor(n_estimators=100, min_samples_leaf=25,
-                               random_state=args.seed, n_jobs=-1).fit(Xtr, ytr)
-    report("random forest", rf.predict(Xte), time.perf_counter() - t)
-    t = time.perf_counter()
-    mlp = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300,
-                       early_stopping=True, random_state=args.seed)
-    mlp.fit(sc.transform(Xtr), ytr)
-    report("MLP", mlp.predict(sc.transform(Xte)), time.perf_counter() - t)
+    for name in da.scores:
+        s = da.scores[name]
+        print(f"  {name:>14s} {s['mae']:>8.3f} {s['mre']:>8.3f} "
+              f"{s['rmse']:>8.3f} {s['r2']:>8.3f} {s['exact']:>8.1%}",
+              flush=True)
 
-    print(f"[n2v-1M] peak RSS for the whole run: {rss_mb():.0f} MB", flush=True)
+    modified = lp.protocol_modified or da.protocol_modified
+    print(f"[n2v-1M] protocol={PROTOCOL} protocol_modified={modified}",
+          flush=True)
+    print(f"[n2v-1M] peak RSS for the whole run: {rss_mb():.0f} MB",
+          flush=True)
 
 
 if __name__ == "__main__":

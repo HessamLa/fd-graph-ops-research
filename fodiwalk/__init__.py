@@ -11,11 +11,23 @@
 
 The tree, and the one-way dependency between the stages::
 
-    core/            csr, force_directed, sell_c_sigma, forces, plan_contract
-    make_graph/      datasets                     (stage 1)
-    augment_graph/   walks, pairs, weights, buckets, far_pairs, landmarks
-    misc/            optim, drop, evaluation      (stage 3 support)
-    fodiwalk.py      class Fodiwalk
+    config.py        class Config -- every knob, FLAT
+    core/            csr, force_directed (ForceDirected, the pure
+                     engine), sell_c_sigma, forces, plan_contract
+                     `force_directed`, `sell_c_sigma` and `csr` are
+                     FORWARDERS since 2026-08-26: the engine, the kernel
+                     and the helpers live in the root package
+                     `forcedirected`, which `fodined` reads too.
+                     CATALOG section 23.
+    base.py          class Fodiwalk_base -- the pipeline contract: the
+                     stage hooks a concrete model implements
+    make_graph/      datasets                            (stage 1)
+    augment_graph/   policies, walks, pairs, weights, buckets, far_pairs,
+                     landmarks, merge, planes, degrees    (stage 2, incl.
+                     the law's planes and the degree divisor)
+    embed/           planner                          (stage 3, CONSUMES)
+    misc/            optim, drop, evaluation             (stage 3 support)
+    model.py         class Fodiwalk(Fodiwalk_base) -- the three stages, WIRED
 
 `core` imports nothing of the package except `core`. Every other stage may
 import `core`. A cycle is a defect.
@@ -27,6 +39,7 @@ change. `fodiwalk/tests/test_parity.py` is the gate, and
 """
 from __future__ import annotations
 
-from .fodiwalk import Fodiwalk, Config
+from .config import Config
+from .model import Fodiwalk
 
 __all__ = ["Fodiwalk", "Config"]

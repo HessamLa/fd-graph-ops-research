@@ -144,7 +144,7 @@ EDGELIST = f"{DATA}/cora/cora.cites"
 #
 # `FODINED_GRAPH` in the environment overrides the value, thus one loop of
 # the shell can run every graph without an edit of this file.
-GRAPH = 'com_youtube'      # 'cora' | 'pubmed' | 'wordnet' | 'ncbi_taxonomy'
+GRAPH = 'cora'      # 'cora' | 'pubmed' | 'wordnet' | 'ncbi_taxonomy'
                     # | 'com_youtube' | 'as_skitter' | 'roadnet_ca'
 GRAPH = os.environ.get('FODINED_GRAPH', GRAPH)
 

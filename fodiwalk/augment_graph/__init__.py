@@ -11,6 +11,13 @@ hop distance -- and never a measured distance. The exact-distance policies
 `ball` and `sampled` were removed on 2026-08-20; see `dev-docs/CATALOG.md`
 section 18.
 
+`planes.py` and `degrees.py` moved here from `embed/` on 2026-08-21: a
+plane and a degree are properties of the RECIPE (one pair policy plus one
+force law) and not of the kernel that consumes them, thus they are
+DATA-PREPARATION and belong to stage 2. `embed/` keeps only the plan build
+and the jitted kernel wiring -- consumption, and nothing else
+(`dev-docs/fodiwalk-module.md`, `dev-docs/CATALOG.md` the RECIPE entry).
+
 THREE INVARIANTS, and each one has already caused a silent defect:
 
   I4  a stored weight is an INTEGER in `[1, window]`, and 1 means
@@ -25,8 +32,11 @@ THREE INVARIANTS, and each one has already caused a silent defect:
       `walk_pair_stats` DOES prune, and its prune is an approximation that
       `prunes > 0` reports.
 
-Import discipline: this package imports numpy and scipy only. It never
-imports `core`.
+Import discipline: this package imports numpy, scipy and `core`. `core` is
+read for the plane contract only (`planes_of`, `fuse`, `degrees_from_D`,
+`PLANE_CHECKS`) -- the recipe's data preparation needs to know what a law's
+planes are named and what a degree promises. It never imports `embed` or
+the model.
 """
 from __future__ import annotations
 
@@ -39,6 +49,11 @@ from .weights import RULES as WEIGHT_RULES
 from .buckets import bucket_sample, budget, row_buckets
 from .far_pairs import degree_table, sample_far_pairs
 from . import landmarks
+from .result import Augmentation, AugmentSpec, take
+from .merge import add_far_pairs, drop_pairs_of
+from .policies import POLICIES, build, graph_walk
+from .planes import ForceSpec, PLANE_BUILDERS, build_planes, force_params
+from .degrees import resolve_degrees
 
 __all__ = [
     "split_key", "to_csr", "to_csr_directed", "cap_per_node", "row_cap",
@@ -46,4 +61,8 @@ __all__ = [
     "walk_rows", "with_all_neighbours", "with_neighbours_low_deg",
     "WEIGHT_RULES", "bucket_sample", "budget", "row_buckets",
     "degree_table", "sample_far_pairs", "landmarks",
+    "Augmentation", "AugmentSpec", "take", "add_far_pairs", "drop_pairs_of",
+    "POLICIES", "build", "graph_walk",
+    "ForceSpec", "PLANE_BUILDERS", "build_planes", "force_params",
+    "resolve_degrees",
 ]

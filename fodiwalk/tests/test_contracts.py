@@ -55,7 +55,11 @@ def test_b1_row_of_matches_repeat_on_20_random_csrs():
 
 
 def test_b1_csr_imports_nothing_of_the_package():
-    """B1.2. `core/csr.py` is the bottom of the tree."""
+    """B1.2. `core/csr.py` is the bottom of the tree.
+
+    A FORWARDER since 2026-08-26 -- `row_of` and `n_rows` moved to
+    `forcedirected/csr.py` with the engine that reads them -- and the
+    contract is unchanged: it still imports nothing of `fodiwalk`."""
     tree = ast.parse((PKG / "core" / "csr.py").read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -68,8 +72,11 @@ def test_b1_csr_imports_nothing_of_the_package():
 
 def test_core_imports_only_core():
     """The risk of section 9: `core` must import no other stage, at module
-    level. `set_rule` reaches `misc.optim` through a FUNCTION-local import,
-    which is the documented exception and keeps the graph one-way."""
+    level. Since 2026-08-26 three modules of `core` are forwarders to the
+    ROOT package `forcedirected`, which is no stage of `fodiwalk` and reads
+    nothing of this repository; the engine's function-local `optim` import
+    went there with it. The one-way rule is unchanged, and it is what this
+    gate keeps."""
     for path in sorted((PKG / "core").glob("*.py")):
         tree = ast.parse(path.read_text())
         for node in tree.body:                       # module level only

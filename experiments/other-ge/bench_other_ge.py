@@ -3,7 +3,10 @@
 
 This is the baseline experiment. `fodined` is a force-directed embedding.
 This script runs two other methods on the same graphs and the same tasks, so
-that the numbers of fodined have something to stand against.
+that the numbers of fodined have something to stand against. The tasks
+themselves live in `evaluator`, under the protocol name `otherge`: that
+protocol is a frozen record of what this script did, thus every number below
+reproduces `results_2026-08-14.log` for the same seed.
 
 The two methods
 ===============
@@ -27,6 +30,10 @@ Poincare  The embedding goes into hyperbolic space (the Poincare ball), and
           hyperbolic dimensions. This is the method to beat on a tree, and
           it is the reason this experiment includes two trees.
 
+          The Poincare ball needs its OWN distance: `dist_approx` below gets
+          `metric="poincare"` for this method. A Euclidean distance in the
+          Poincare ball has no meaning.
+
 The graphs
 ==========
     wordnet         82,144 nouns, the hypernym hierarchy of WordNet 3.0.
@@ -38,19 +45,20 @@ The graphs
 
 The two trees are large, and `gensim` runs on the CPU. Thus `--max-nodes`
 takes ONE subtree of about that size, and the whole tree stays on the disk.
-The subtree keeps the depth of the original tree. `--truncate bfs` gives the
-older behaviour, but read the warning in `_pick_subtree` first: on NCBI a BFS
-returns a star, and every method then reaches a perfect score.
+`evaluator.load_graph` (via `fodiwalk.make_graph.datasets`) picks the subtree
+for a tree and a BFS ball for anything else, and both stay connected, thus
+the hop distances stay meaningful.
 
-The tasks (the same as `fodined/modular.py`)
+The tasks (`evaluator`, protocol `otherge`)
 ============================================
-1. Link prediction. A random forest predicts if two nodes have an edge. The
-   feature of a pair is the Hadamard product of the two embeddings. The
-   report gives accuracy, precision, recall, F1, and AUC.
-2. Shortest path distance approximation. A random forest and an MLP predict
-   the hop distance from the distance of the two embeddings. Each method
-   uses its OWN distance: Euclidean for node2vec, and the Poincare distance
-   for Poincare. A Euclidean distance in the Poincare ball has no meaning.
+1. Link prediction (`evaluator.link_prediction`). A random forest predicts
+   if two nodes have an edge. The feature of a pair is the Hadamard product
+   of the two embeddings. The report gives accuracy, precision, recall, F1,
+   and AUC.
+2. Shortest path distance approximation (`evaluator.dist_approx`). A random
+   forest and an MLP predict the hop distance from the distance of the two
+   embeddings. Each method uses its OWN distance: Euclidean for node2vec,
+   Poincare for Poincare (the `metric` keyword).
 3. Speed. The time to build the walks, and the time to train.
 
 Run from the repo root (fdmap/):
@@ -73,173 +81,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 
+import evaluator as ev
+
 GRAPHS = ("cora", "pubmed", "wordnet", "ncbi_taxonomy")
 METHODS = ("node2vec", "poincare")
-
-
-# ---------------------------------------------------------------------------
-# Loading. Every loader returns one edge array of shape (m, 2), 0-based.
-# ---------------------------------------------------------------------------
-def _edges_cora():
-    raw = np.loadtxt(os.path.join(ROOT, "data_cache/cora/cora.cites"),
-                     dtype=np.int64)
-    return raw
-
-
-def _edges_pubmed():
-    path = os.path.join(ROOT, "data_cache/pubmed/Pubmed-Diabetes/data/"
-                              "Pubmed-Diabetes.DIRECTED.cites.tab")
-    src, dst = [], []
-    with open(path) as f:
-        f.readline(), f.readline()
-        for line in f:
-            p = line.split("\t")
-            src.append(int(p[1].split(":")[1]))
-            dst.append(int(p[3].split(":")[1]))
-    return np.column_stack([src, dst]).astype(np.int64)
-
-
-def _edges_wordnet():
-    """The hypernym edges of the WordNet 3.0 nouns.
-
-    Each line of `data.noun` is one synset. The pointer list holds the
-    symbol `@` for a hypernym, and `@i` for an instance hypernym. The
-    offset of the target follows the symbol. The offsets become the node
-    ids, thus no name table is necessary.
-    """
-    path = os.path.join(ROOT, "data_cache/wordnet/dict/data.noun")
-    src, dst = [], []
-    with open(path, encoding="latin-1") as f:
-        for line in f:
-            if line.startswith("  "):                 # the licence header
-                continue
-            head, _, _ = line.partition("|")
-            parts = head.split()
-            offset = int(parts[0])
-            # ... w_cnt words ... p_cnt then the pointers.
-            i = 3
-            w_cnt = int(parts[i], 16)
-            i += 1 + 2 * w_cnt                        # word + lex_id, each
-            p_cnt = int(parts[i])
-            i += 1
-            for _ in range(p_cnt):
-                sym, target = parts[i], int(parts[i + 1])
-                if sym in ("@", "@i"):
-                    src.append(offset)
-                    dst.append(target)
-                i += 4                                # sym, off, pos, st
-    return np.column_stack([src, dst]).astype(np.int64)
-
-
-def _edges_ncbi():
-    """The NCBI taxonomy tree, from `nodes.dmp`: `tax_id | parent_tax_id`."""
-    path = os.path.join(ROOT, "data_cache/ncbi_taxonomy/nodes.dmp")
-    src, dst = [], []
-    with open(path) as f:
-        for line in f:
-            p = line.split("\t|\t", 2)
-            a, b = int(p[0]), int(p[1])
-            if a != b:                                # the root is its parent
-                src.append(a)
-                dst.append(b)
-    return np.column_stack([src, dst]).astype(np.int64)
-
-
-LOADERS = {"cora": _edges_cora, "pubmed": _edges_pubmed,
-           "wordnet": _edges_wordnet, "ncbi_taxonomy": _edges_ncbi}
-
-
-def _pick_subtree(e, n, max_nodes, seed):
-    """Node ids of ONE subtree of about `max_nodes` nodes.
-
-    Why not a BFS from the biggest node: NCBI has nodes with an enormous
-    number of children, thus a BFS spends the whole budget on the children
-    of one hub. The first version of this function did that, and it returned
-    a STAR: one node of degree 19,999, 19,999 leaves, and a distance of
-    exactly 2 between every pair that has no edge. Every method then reaches
-    a perfect score, and the measurement says nothing about a tree.
-
-    A subtree keeps the depth and the branching of the original tree. The
-    search starts at a random node and it goes UP to the parent until the
-    subtree is large enough.
-
-    `e` holds the directed edges as `(child, parent)`.
-    """
-    rng = np.random.default_rng(seed)
-    parent = np.full(n, -1, dtype=np.int64)
-    parent[e[:, 0]] = e[:, 1]                  # the first parent wins (DAG)
-    order = np.argsort(e[:, 1], kind="stable")
-    ch_of = e[order, 0]
-    starts = np.searchsorted(e[order, 1], np.arange(n))
-    ends = np.searchsorted(e[order, 1], np.arange(n), side="right")
-
-    def collect(root, cap):
-        out, frontier = [root], [root]
-        while frontier and len(out) < cap:
-            nxt = []
-            for u in frontier:
-                kids = ch_of[starts[u]:ends[u]]
-                for k in kids:
-                    if len(out) >= cap:
-                        break
-                    out.append(int(k))
-                    nxt.append(int(k))
-            frontier = nxt
-        return out
-
-    node = int(rng.integers(0, n))
-    for _ in range(200):                       # a guard against a long climb
-        got = collect(node, max_nodes + 1)
-        if len(got) >= max_nodes // 2 or parent[node] < 0:
-            return got[:max_nodes]
-        node = int(parent[node])
-    return collect(node, max_nodes)
-
-
-def load_csr(name, max_nodes=0, seed=42, truncate="subtree"):
-    """Edge list -> a symmetric CSR of 1.0, with contiguous ids 0..n-1.
-
-    `truncate` chooses how to make a large graph smaller:
-      'subtree' -- one subtree of about `max_nodes` nodes. It keeps the
-                   depth. Use this for a tree.
-      'bfs'     -- a BFS from the node of the highest degree. It keeps the
-                   nodes near one hub, and it can return a star on a graph
-                   with a large fan-out. See `_pick_subtree`.
-    Both keep the result connected, thus the hop distances stay meaningful.
-    """
-    e = LOADERS[name]()
-    _, flat = np.unique(e.ravel(), return_inverse=True)
-    e = flat.reshape(-1, 2)
-    e = e[e[:, 0] != e[:, 1]]
-    n = int(e.max()) + 1
-    rows = np.concatenate([e[:, 0], e[:, 1]])
-    cols = np.concatenate([e[:, 1], e[:, 0]])
-    A = sp.csr_matrix((np.ones(rows.size), (rows, cols)), shape=(n, n))
-    A.data[:] = 1.0
-    A.sort_indices()
-
-    if max_nodes and n > max_nodes:
-        if truncate == "subtree":
-            order = _pick_subtree(e, n, max_nodes, seed)
-        else:
-            start = int(np.argmax(np.diff(A.indptr)))
-            seen = np.zeros(n, dtype=bool)
-            seen[start] = True
-            order = [start]
-            frontier = np.array([start])
-            while len(order) < max_nodes and frontier.size:
-                nxt = np.unique(np.concatenate(
-                    [A.indices[A.indptr[u]:A.indptr[u + 1]] for u in frontier]))
-                nxt = nxt[~seen[nxt]]
-                nxt = nxt[:max_nodes - len(order)]
-                seen[nxt] = True
-                order.extend(nxt.tolist())
-                frontier = nxt
-        keep = np.sort(np.asarray(order))
-        A = A[keep][:, keep].tocsr()
-        A.eliminate_zeros()
-        n = A.shape[0]
-    return A, n
+PROTOCOL = "otherge"
 
 
 # ---------------------------------------------------------------------------
@@ -330,8 +176,8 @@ def embed_poincare(A, n, args):
 
     The model wants relations, thus each edge becomes one `(u, v)` pair. The
     result lives in the Poincare ball: every vector has a norm below 1, and
-    the distance is NOT Euclidean. `poincare_distance` below is the correct
-    distance.
+    the distance is NOT Euclidean. `evaluator.dist_approx(..., metric=
+    "poincare")` is the correct distance for this `Z`.
     """
     from gensim.models.poincare import PoincareModel
 
@@ -351,132 +197,6 @@ def embed_poincare(A, n, args):
     return Z, {"walk_s": 0.0, "train_s": t_train}
 
 
-def poincare_distance(u, v):
-    """The distance of two points of the Poincare ball, for whole arrays."""
-    du = np.sum(u * u, axis=1)
-    dv = np.sum(v * v, axis=1)
-    duv = np.sum((u - v) ** 2, axis=1)
-    x = 1.0 + 2.0 * duv / np.maximum((1.0 - du) * (1.0 - dv), 1e-12)
-    return np.arccosh(np.maximum(x, 1.0 + 1e-12))
-
-
-# ---------------------------------------------------------------------------
-# The tasks
-# ---------------------------------------------------------------------------
-def sample_non_edges(A, n, count, rng):
-    Ac = A.tocoo()
-    keys = np.sort(Ac.row.astype(np.int64) * n + Ac.col.astype(np.int64))
-    u_all = np.empty(0, np.int64)
-    v_all = np.empty(0, np.int64)
-    while u_all.size < count:
-        draw = (count - u_all.size) * 2 + 1024
-        u, v = rng.integers(0, n, draw), rng.integers(0, n, draw)
-        ok = u != v
-        u, v = u[ok], v[ok]
-        k = u * n + v
-        pos = np.searchsorted(keys, k)
-        pos[pos >= keys.size] = 0
-        keep = keys[pos] != k
-        room = count - u_all.size
-        u_all = np.concatenate([u_all, u[keep][:room]])
-        v_all = np.concatenate([v_all, v[keep][:room]])
-    return np.column_stack([u_all, v_all])
-
-
-def task_link_prediction(A, n, Z, seed):
-    """The protocol of `fodined/modular.py`: Hadamard feature, balanced."""
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import (accuracy_score, precision_score,
-                                 recall_score, f1_score, roc_auc_score)
-
-    rng = np.random.default_rng(seed)
-    pos = np.column_stack(sp.triu(A, k=1).nonzero())
-    if pos.shape[0] > 40000:                 # a cap, to hold the time down
-        pos = pos[rng.choice(pos.shape[0], 40000, replace=False)]
-    neg = sample_non_edges(A, n, pos.shape[0], rng)
-
-    pairs = np.vstack([pos, neg])
-    X = Z[pairs[:, 0]] * Z[pairs[:, 1]]
-    y = np.concatenate([np.ones(pos.shape[0]), np.zeros(neg.shape[0])])
-    Xtr, Xte, ytr, yte = train_test_split(
-        X, y, test_size=0.2, random_state=seed, stratify=y)
-    clf = RandomForestClassifier(n_estimators=100, random_state=seed,
-                                 n_jobs=-1).fit(Xtr, ytr)
-    pred = clf.predict(Xte)
-    prob = clf.predict_proba(Xte)[:, 1]
-    return dict(accuracy=accuracy_score(yte, pred),
-                precision=precision_score(yte, pred, zero_division=0),
-                recall=recall_score(yte, pred, zero_division=0),
-                f1=f1_score(yte, pred, zero_division=0),
-                auc=roc_auc_score(yte, prob))
-
-
-def task_sp_regression(A, n, Z, method, seed, n_pairs=20000):
-    """Predict the hop distance from the distance of the two embeddings.
-
-    The feature is ONE number: the distance of the pair in the space of the
-    method. This is the same feature that `fodined/modular.py` uses now, thus
-    the numbers are comparable. Pairs at hop 1 are removed, because a
-    neighbour is the easy case and it hides the rest.
-    """
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.neural_network import MLPRegressor
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import (mean_absolute_error, mean_squared_error,
-                                 r2_score,
-                                 mean_absolute_percentage_error)
-    import networkit as nk
-
-    rng = np.random.default_rng(seed)
-    pairs = sample_non_edges(A, n, n_pairs, rng)
-
-    up = sp.triu(A, k=1).tocoo()
-    g = nk.GraphFromCoo(
-        (np.ascontiguousarray(up.row, dtype=np.uint64),
-         np.ascontiguousarray(up.col, dtype=np.uint64)),
-        n=n, weighted=False, directed=False)
-    pll = nk.distance.PrunedLandmarkLabeling(g)
-    pll.run()
-    q = np.fromiter((pll.query(int(a), int(b)) for a, b in pairs),
-                    dtype=np.uint64, count=pairs.shape[0])
-    ok = q != np.uint64(2 ** 64 - 1)                    # keep reachable pairs
-    pairs, y = pairs[ok], q[ok].astype(np.float64)
-    keep = y > 1
-    pairs, y = pairs[keep], y[keep]
-    if y.size < 200:
-        return None
-
-    if method == "poincare":
-        X = poincare_distance(Z[pairs[:, 0]], Z[pairs[:, 1]])[:, None]
-    else:
-        X = np.linalg.norm(Z[pairs[:, 0]] - Z[pairs[:, 1]], axis=1)[:, None]
-
-    Xtr, Xte, ytr, yte = train_test_split(
-        X, y, test_size=0.2, random_state=seed)
-    sc = StandardScaler().fit(Xtr)
-    out = {"n_pairs": int(y.size), "hop_min": float(y.min()),
-           "hop_max": float(y.max())}
-
-    def score(tag, pred):
-        out[f"{tag}_mae"] = mean_absolute_error(yte, pred)
-        out[f"{tag}_mre"] = mean_absolute_percentage_error(yte, pred)
-        out[f"{tag}_rmse"] = float(np.sqrt(mean_squared_error(yte, pred)))
-        out[f"{tag}_r2"] = r2_score(yte, pred)
-        out[f"{tag}_exact"] = float(np.mean(np.rint(pred) == yte))
-
-    score("base", np.full(yte.shape, ytr.mean()))
-    rf = RandomForestRegressor(n_estimators=100, min_samples_leaf=25,
-                               random_state=seed, n_jobs=-1).fit(Xtr, ytr)
-    score("rf", rf.predict(Xte))
-    mlp = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300,
-                       early_stopping=True, random_state=seed)
-    mlp.fit(sc.transform(Xtr), ytr)
-    score("mlp", mlp.predict(sc.transform(Xte)))
-    return out
-
-
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(
@@ -486,7 +206,6 @@ def main():
     ap.add_argument("--methods", default=",".join(METHODS))
     ap.add_argument("--dim", type=int, default=128)
     ap.add_argument("--max-nodes", type=int, default=20000)
-    ap.add_argument("--truncate", default="subtree", choices=("subtree", "bfs"))
     ap.add_argument("--seed", type=int, default=42)
     # node2vec
     ap.add_argument("--walks", type=int, default=10)
@@ -512,10 +231,11 @@ def main():
     rows = []
     for gname in graphs:
         t = time.perf_counter()
-        A, n = load_csr(gname, args.max_nodes, args.seed, args.truncate)
-        print(f"\n=== {gname} === n={n:,}, {A.nnz//2:,} undirected edges, "
-              f"avg degree {A.nnz/n:.2f}, load {time.perf_counter()-t:.1f}s",
-              flush=True)
+        A, n, ginfo = ev.load_graph(gname, max_nodes=args.max_nodes,
+                                    seed=args.seed)
+        print(f"\n=== {gname} === n={n:,}, {ginfo['n_edges']:,} undirected "
+              f"edges, avg degree {ginfo['avg_degree']:.2f}, load "
+              f"{time.perf_counter()-t:.1f}s", flush=True)
 
         for m in methods:
             try:
@@ -523,26 +243,33 @@ def main():
                 Z, tm = (embed_node2vec if m == "node2vec"
                          else embed_poincare)(A, n, args)
                 total = time.perf_counter() - t
-                lp = task_link_prediction(A, n, Z, args.seed)
-                spr = task_sp_regression(A, n, Z, m, args.seed)
+
+                lp = ev.link_prediction(A, Z, protocol=PROTOCOL,
+                                        seed=args.seed)
+                da_kw = {"metric": "poincare"} if m == "poincare" else {}
+                da = ev.dist_approx(A, Z, protocol=PROTOCOL, seed=args.seed,
+                                    **da_kw)
+
                 rows.append(dict(graph=gname, method=m, n=n, total_s=total,
-                                 **tm, **{f"lp_{k}": v for k, v in lp.items()},
-                                 **({f"sp_{k}": v for k, v in spr.items()}
-                                    if spr else {})))
+                                 lp=lp, da=da))
                 print(f"  {m:9s} embed {total:7.1f}s "
                       f"(walk {tm['walk_s']:.1f}s + train {tm['train_s']:.1f}s), "
                       f"{n/total:8.0f} nodes/s", flush=True)
-                print(f"            link pred: acc {lp['accuracy']:.4f}  "
-                      f"prec {lp['precision']:.4f}  rec {lp['recall']:.4f}  "
-                      f"f1 {lp['f1']:.4f}  auc {lp['auc']:.4f}", flush=True)
-                if spr:
-                    print(f"            hop regr ({spr['n_pairs']} pairs, "
-                          f"hops {spr['hop_min']:.0f}..{spr['hop_max']:.0f}): "
-                          f"base MAE {spr['base_mae']:.3f} | "
-                          f"rf MAE {spr['rf_mae']:.3f} R2 {spr['rf_r2']:.3f} "
-                          f"exact {spr['rf_exact']:.1%} | "
-                          f"mlp MAE {spr['mlp_mae']:.3f} R2 {spr['mlp_r2']:.3f} "
-                          f"exact {spr['mlp_exact']:.1%}", flush=True)
+                print(f"            link pred: acc {lp.scores['accuracy']:.4f}  "
+                      f"prec {lp.scores['precision']:.4f}  "
+                      f"rec {lp.scores['recall']:.4f}  "
+                      f"f1 {lp.scores['f1']:.4f}  auc {lp.scores['auc']:.4f}",
+                      flush=True)
+                print(f"            hop regr ({da.sizes['n_pairs']} pairs, "
+                      f"hops {da.sizes['hop_min']:.0f}.."
+                      f"{da.sizes['hop_max']:.0f}): "
+                      f"base MAE {da.scores['baseline']['mae']:.3f} | "
+                      f"rf MAE {da.scores['rf']['mae']:.3f} "
+                      f"R2 {da.scores['rf']['r2']:.3f} "
+                      f"exact {da.scores['rf']['exact']:.1%} | "
+                      f"mlp MAE {da.scores['mlp']['mae']:.3f} "
+                      f"R2 {da.scores['mlp']['r2']:.3f} "
+                      f"exact {da.scores['mlp']['exact']:.1%}", flush=True)
             except Exception as exc:                    # noqa: BLE001
                 print(f"  {m:9s} FAILED: {type(exc).__name__}: {exc}",
                       flush=True)
@@ -553,12 +280,13 @@ def main():
           f"{'acc':>6s} {'prec':>6s} {'rec':>6s} {'f1':>6s} {'auc':>6s} "
           f"{'hopMAE':>7s} {'hopR2':>6s}", flush=True)
     for r in rows:
+        lp, da = r["lp"], r["da"]
         print(f"{r['graph']:>14s} {r['method']:>9s} {r['n']:>8,} "
-              f"{r['total_s']:>8.1f} {r['lp_accuracy']:>6.3f} "
-              f"{r['lp_precision']:>6.3f} {r['lp_recall']:>6.3f} "
-              f"{r['lp_f1']:>6.3f} {r['lp_auc']:>6.3f} "
-              f"{r.get('sp_mlp_mae', float('nan')):>7.3f} "
-              f"{r.get('sp_mlp_r2', float('nan')):>6.3f}", flush=True)
+              f"{r['total_s']:>8.1f} {lp.scores['accuracy']:>6.3f} "
+              f"{lp.scores['precision']:>6.3f} {lp.scores['recall']:>6.3f} "
+              f"{lp.scores['f1']:>6.3f} {lp.scores['auc']:>6.3f} "
+              f"{da.scores['mlp']['mae']:>7.3f} "
+              f"{da.scores['mlp']['r2']:>6.3f}", flush=True)
 
 
 if __name__ == "__main__":

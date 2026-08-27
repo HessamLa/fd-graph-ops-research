@@ -4,11 +4,14 @@
 The specification of 2026-08-17:
 
 ```
-h == 1:  Fa = k * (z_v - z_u)
-         Fr = - exp(z_v - z_u)
+let z_uv = z_v - z_u
+
+h == 1:  Fa = k * z_uv
+         Fr = - exp(||z_uv||) * (z_uv) / ||z_uv||
 h >= 2:  Fa = 0
-         Fr = -(h / freq) * exp(z_v - z_u)   # freq: how often v appeared
-                                             # in the walks
+         Fr = -(h / freq) * exp(||z_uv||) * (z_uv) / ||z_uv||
+                                        # freq: how often v appeared
+                                        # in the walks
 ```
 
 The engine wants a MAGNITUDE along the direction `u -> v`, and it applies

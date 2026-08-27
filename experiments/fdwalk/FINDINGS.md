@@ -980,3 +980,248 @@ report that quotes AUC to justify a `p` is quoting noise.
    each other on PubMed, which one seed cannot separate.
 3. **`fdlinear` only.** Every grid above holds the force law fixed. Whether
    these rankings survive the `v1` law is not measured.
+
+---
+
+# UPDATE 2026-08-24 -- `fdwalk/modular.py`, and two limits of this record
+
+**What was built.** `fdwalk/modular.py`, the walk augmentation in the
+modular form of `fodined/modular.py`: the file holds the configuration,
+the ORDER of the steps and the messages, and nothing else. The engine, the
+force law (`v1`) and the layout are imported from `fodined` unchanged.
+`fdwalk/walks.py` and `fdwalk/weights.py` are VERBATIM copies of this
+directory, thus `diff` is the parity argument. Every score comes from the
+`evaluator` package; the script measures nothing itself.
+
+**Nothing above is changed.** The two entries below are limits of THIS
+record that the reproduction exposed, and they are appended, not applied.
+
+## Finding 1: this directory no longer reproduces its own G2 table
+
+The G2 PubMed table was measured 2026-08-15. Re-run TODAY, unchanged, with
+the command of `run_g2.sh`, `bench_fdwalk.py` gives:
+
+| | recorded 2026-08-15 | `bench_fdwalk.py`, 2026-08-24 |
+| --- | --- | --- |
+| raw pairs | 15,447,428 | 15,449,427 |
+| unique | 2,554,345 | 2,557,515 |
+| after the cap | 242,252 | 242,414 |
+| `D.nnz` | 653,866 | **654,190** |
+| final \|\|dZ\|\| | 0.2223 | **0.3553** |
+| AUC | 0.9951 | 0.9950 |
+| hop R2 | 0.522 | **0.513** |
+
+**The cause is `walk_pair_stats(block=)`, and it is not a memory knob.**
+`uniform_walks` takes ONE `rng.random(block)` for each STEP of the walk,
+thus the partition of the start nodes decides which numbers of the stream
+reach which walk. Two block sizes give two different walk sets from one
+seed. Measured on PubMed at the seed 42:
+
+| block | raw | unique | after the cap |
+| --- | --- | --- | --- |
+| 30,000 | 15,451,785 | 2,560,240 | 242,375 |
+| 50,000 (the value in `walks.py` today) | 15,449,427 | 2,557,515 | 242,414 |
+| **100,000** | **15,447,428** | **2,554,345** | **242,252** |
+| 200,000 | 15,447,798 | 2,555,755 | 242,239 |
+
+**The G1 and G2 tables were made at `block = 100,000`.** Cora is not
+affected at any value above 27,080 -- `n * n_walks` is 27,080 there, thus
+one block -- which is why G1 reproduces and G2 does not. `fdwalk/modular.py`
+therefore carries `PAIR_BLOCK = 100_000` and it names the difference.
+
+The divergence begins at the RAW pair count, thus it is upstream of the
+cap, the weight, the far pairs and the physics. It is a change of the
+INPUT and not of the method, and no number of this document moves because
+of it.
+
+## Finding 2: four recorded fields have a floor, and it is not 4 decimals
+
+Four runs of ONE configuration (PubMed, seed 42), with a bit-identical `D`
+and a bit-identical `Z` -- `final ||dZ|| = 0.3553` and `r2_dist = 0.513`
+in all four:
+
+| field | the four runs | spread |
+| --- | --- | --- |
+| `dz`, `auc`, `r2_dist`, `mae_dist`, `dnnz` | identical | **0** |
+| `acc` | 0.9676, 0.9676, 0.9675, 0.9673 | 3e-4 |
+| `r2_vec` | 0.485, 0.473, 0.480, 0.474 | **0.012** |
+| `mae_vec` | 0.836, 0.848, 0.845, 0.846 | 0.012 |
+
+The cause is the multi-threaded estimator and not the embedding.
+`RandomForest(n_jobs=-1)` sums its trees in thread order, thus a
+borderline sample flips; the MLP of the `vector` feature reads 128 columns
+and its matmuls accumulate the same way, and 300 iterations amplify it.
+The `distance` feature reads ONE column and it is stable.
+
+**Thus `r2_vec` must not be quoted to three decimals, and a difference
+below about 0.012 in it is not a result.** The 1.5% floor of `CLAUDE.md`
+gives 0.007 at `r2_vec = 0.47`, which is BELOW this spread: for this one
+field the estimator noise, and not the floor, is the test. `r2_dist` is
+unaffected and it stays the discriminating metric, as every earlier entry
+of this document already treats it.
+
+## What reproduces
+
+Cora and PubMed, three seeds each, `walk/min_gap/plain`, through
+`fdwalk/modular.py` at `PAIR_BLOCK = 100_000`:
+
+* EXACT on every deterministic field -- `D.nnz`, final `||dZ||`, `auc`,
+  `r2_dist`, `mae_dist`.
+* Inside the spread of Finding 2 on `acc`, `f1`, `r2_vec` and `mae_vec`.
+* NOT reproduced: `h2_exact` and `h2_pairs`. `evaluator` holds no H2 task,
+  and rebuilding one inside the script would defeat the reason to call the
+  package. H2 measures the augmentation and not the embedding.
+
+## A defect of `evaluator`, found by this work and repaired
+
+`evaluator`'s `fodined` and `fodiwalk_*` protocols drew their negative
+pairs with the rejection sampler of `bench_other_ge.py`. Both files they
+are NAMED for call `sample_far_pairs` instead
+(`fodined/link_prediction.py:80`, `fodiwalk/misc/evaluation.py:80`), which
+collapses the direction with `np.unique`, sorts the batch, and spends a
+SECOND `rng.choice` when the batch overfills. Thus it returns other pairs
+AND it leaves the generator in another state, and every draw after it --
+the whole hop sample -- differs. Measured on Cora: `acc` 0.9777 against
+0.9744, and the hop R2 that followed the shifted generator 0.630 against
+0.616.
+
+The repair is a third compatibility knob beside the `pos_draw` and
+`pair_draw` that `evaluator/config.py` already carries: `LPCfg.neg_draw`,
+with the draw sequence transcribed into `evaluator/pairs.py`. Verified:
+`otherge` is unchanged (0.000e+00 on all five scores) and `fodined` now
+reproduces `fodined/link_prediction.py` bit-exactly.
+
+### UPDATE 2026-08-24 -- Finding 2 named the WRONG mechanism
+
+**The text of Finding 2 above is kept, and its MECHANISM is wrong.** It
+says the spread of `acc`, `f1`, `r2_vec` and `mae_vec` comes from
+multi-threaded sklearn estimators. It does not. Session `fdmap-b6`
+investigated and refuted it; this session re-ran the two load-bearing
+tests and confirms them.
+
+**The scoring stack is BIT-DETERMINISTIC.** Three repeats of the whole
+evaluation on ONE fixed `Z` give identical scores to six decimals. The
+four repeat runs of Finding 2 varied because each one recomputed `Z`.
+
+**`Z` itself is not reproducible on this GPU.** Two runs with a
+bit-identical `D` give `||A-B|| / ||A|| = 3.10e-06`, and 96.4% of the
+cells differ.
+
+**The cause is a scatter-add in the kernel.**
+`sell_c_sigma.py:436` is `dZ.at[rows].add(F, mode="drop")`. A hub row that
+the plan SPLITS becomes several virtual rows that carry the SAME owner id,
+thus several adds land on one address. Float32 addition is commutative but
+NOT associative, thus the order decides the last bits.
+
+**The threshold is exactly 3, and it explains the size asymmetry.**
+Measured here, `jnp.zeros(...).at[idx].add(F)` with `k` duplicate indices,
+8 calls each, on this GPU:
+
+| duplicates | distinct results of 8 calls |
+| --- | --- |
+| 1 | 1 -- deterministic |
+| 2 | 1 -- deterministic (`a + b == b + a`) |
+| 3 | 6 -- NONDETERMINISTIC |
+| 4 | 8 -- NONDETERMINISTIC |
+
+Two addends are safe; three are not. The maximum owner-id multiplicity
+INSIDE ONE BATCH, measured on the plans of this experiment:
+
+| graph | `n_split` | batches by max in-batch multiplicity | reaches 3+ |
+| --- | --- | --- | --- |
+| Cora | 3 | `{1: 15, 2: 1}` | **no** |
+| PubMed | 17 | `{1: 54, 4: 1}` | **yes** |
+
+**Thus Cora is bit-reproducible and PubMed is not, and it is not about the
+size of the graph.** It is whether one hub row splits into three or more
+virtual rows inside ONE batch. Cora reaches 2 and stops there.
+
+**Why only those four fields.** `dz` is a mean over `n * 128` cells, `auc`
+is a rank statistic, and `r2_dist` reads ONE feature and converges in 17
+iterations -- all three absorb a 3e-6 shift. The `vector` MLP reads 128
+features, stops on an Adam loss plateau (`n_iter_no_change`), and sits deep
+in overfit; a 3e-6 shift moves WHEN the stop fires (`n_iter_` 66 against
+64), and the test R2 moves with it. `acc` and `f1` threshold at `p = 0.5`,
+thus about 7 of 10,000 test pairs flip, which is the 7e-4 seen.
+The hypothesis that the MLP hits `max_iter` is REFUTED: it converges at
+64..66 of 300.
+
+**The record cannot be reproduced by ANY code in this repository.** The
+ORIGINAL `bench_fdwalk.py`, unmodified, at `block = 100_000`, misses the
+recorded table on exactly the same four fields and on no other, and the
+direction of the miss is MIXED across the seeds (s42 and s56 high, s88
+low) -- the signature of a scatter and not of a pipeline difference.
+Library drift is ruled out: numpy 1.26.4 and sklearn 1.7.2 were both
+installed BEFORE the 2026-08-15 record, and jax 0.6.2 matches its log.
+
+**What follows for this document.** `acc`, `f1`, `r2_vec` and `mae_vec`
+are not reproducible to four decimals on this machine, for any run. Quote
+them with a spread. `r2_dist`, `auc`, `dz` and `D.nnz` are exact and stay
+the fields a claim rests on.
+
+**Two open items, neither applied here.** `k_max` above the widest row
+gives `n_split = 0` and makes `_step` bit-identical (measured), at the
+cost of padding -- a decision for the engine and not for this document.
+And `sell_c_sigma.py:11-22` tells the reader the layout has "no scatter,
+no atomics"; that is false whenever a hub row splits, and the next reader
+of that file will believe it.
+
+#### A note on the two multiplicity tables, 2026-08-24
+
+`fdmap-b6` reported this mechanism with a table of its own, and the two do
+NOT line up cell by cell. They count DIFFERENT statistics, and neither is
+a failed reproduction of the other:
+
+| source | what one cell counts | Cora | PubMed |
+| --- | --- | --- | --- |
+| `fdmap-b6` | the per-OWNER multiplicities above 1, pooled over every batch | `{2: 1}` | `{2: 1, 3: 1, 4: 1}` |
+| the table above | the per-BATCH MAXIMUM multiplicity, the 1s included | `{1: 15, 2: 1}` | `{1: 54, 4: 1}` |
+
+Both say the one thing that matters: **Cora tops out at 2 addends on one
+address and PubMed reaches 4.** A reader who diffs the two tables without
+this note will look for a defect that is not there.
+
+---
+
+# 2026-08-20 -- an outside check of one campaign number
+
+Two other sessions checked our scoring today. Recording it because until now
+every number here had been produced and checked by one session only.
+
+**What was checked, and against what.** Session `c5` re-scored the Cora run
+`results/g1_cora_walk_min_gap_plain_s42.log` (walk pairs, `min_gap` weight,
+`plain`, seed 42) and reproduced nine fields exactly, including:
+
+    r2_dist  = 0.616
+    mae_dist = 0.930
+
+Both values are in `results/g1_cora.tsv` and this file confirms them. This
+is the first check of a campaign number by anyone outside this session, and
+it landed on the hop-distance score -- the number we lean on hardest, since
+it is the one that beats node2vec about ten times over.
+
+**A second check, and what it does NOT cover.** Session `fdmap-68` also
+found its own scoring package bit-exact (`max abs diff = 0.000e+00` across
+15 values) against a frozen copy of `fodiwalk/misc/evaluation.py`'s
+`task_hop` and `hop_sample`. That copy was taken 2026-08-22. It shows their
+package agrees with the frozen copy. **It says nothing about whether our
+live `bench_fdwalk.py` still matches that copy.** The `c5` run is the one
+that covers our live code, and it is the one to cite for this campaign.
+
+**One thing worth stating plainly, because it looks wrong and is not.**
+`bench_fdwalk.py:848` passes `gap_csr` -- the walk gap of every stored pair
+-- into `hop_sample`. A reader could fairly assume the stored guess becomes
+the thing we predict. It does not. The target comes from a real
+shortest-path run on the graph:
+
+    bench_fdwalk.py:630
+    hop = shortest_path(A, method="D", unweighted=True, indices=blk)
+
+`gap_csr` feeds only the `h2_exact` column, which reports how often the
+walk gap equalled the true hop distance. That is how H2 was confirmed at
+98.1% exact and 0.0% under. It never touches the regression.
+
+This matters because `fodined/modular.py` does have the defect this looks
+like: it reads its hop target from `D.data`, the stored weight, which is an
+upper bound from sampled pairs and not the graph's true distance. A hop
+score out of `modular.py` cannot be compared with one out of this campaign.

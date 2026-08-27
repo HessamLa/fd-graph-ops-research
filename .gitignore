@@ -239,3 +239,6 @@ outputs_sell_c_sigma_multi_BKUP/
 *.gif
 embeddings.npz
 embeddings_auxdim.npz
+
+*agentic-log*/
+*agentic_log*/

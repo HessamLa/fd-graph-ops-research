@@ -153,6 +153,14 @@ def hop_sample(A, n, rng, n_sources, n_pairs, gap_csr=None):
     measurement of H2, and it gives thousands of pairs. A comparison
     against the random sample above gives only the pairs that both sets
     hold, which was 140 of 17,769 in the first run.
+
+    THIS FUNCTION DOES NOT FILTER HOP-1 PAIRS. The one guard is `d > 0`
+    (self-pairs and unreachable pairs only); a true edge (`d == 1`, the
+    easy case for `task_hop`) is returned like any other pair. Every
+    CALLER in this repository filters it out afterward -- `tests/harness.py`
+    keeps `d >= hop_min` (2 by default) before scoring. A caller that skips
+    that filter silently scores an easier problem, in silence, the same
+    way an unfiltered NCBI star silently scores a trivial one.
     """
     src = rng.choice(n, size=min(n_sources, n), replace=False)
     per = max(1, n_pairs // src.size)
@@ -190,18 +198,24 @@ def hop_sample(A, n, rng, n_sources, n_pairs, gap_csr=None):
             np.concatenate(ds).astype(np.float64), h2)
 
 
-def task_hop(Z, u, v, d, seed, feature="vector", n_estimators: int = 100,
+def task_hop(Z, u, v, d, seed, feature="distance", n_estimators: int = 100,
              hidden=(256, 128), early_stopping: bool = False):
     """Can a model read the hop distance out of two embeddings?
 
     Two feature sets, because this repository holds two protocols and a
     number must be comparable to the baseline that it claims to beat:
 
-      'vector'   `|Z[u] - Z[v]|`, thus `n_dim` features. This is the
-                 protocol of `fodined/modular.py`.
       'distance' the Euclidean distance alone, thus ONE feature. This is
-                 the protocol of `../other-ge/bench_other_ge.py`, and the
-                 node2vec and Poincaré numbers use it.
+                 the protocol of `fodined/modular.py` -- CORRECTED
+                 2026-08-21, see `dev-docs/CATALOG.md` -- and of
+                 `../other-ge/bench_other_ge.py`, whose own docstring
+                 states the two are the same feature on purpose. The
+                 node2vec and Poincaré numbers use it too.
+      'vector'   `|Z[u] - Z[v]|`, thus `n_dim` features. More informative,
+                 and NOT the feature of any baseline recorded in this
+                 repository -- a number under this mode is comparable only
+                 to another number under this mode, never to a published
+                 fodined or other-ge figure.
 
     A model with 128 features can win only because it has more of them, thus
     the two rows must not be mixed.

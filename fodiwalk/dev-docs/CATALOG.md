@@ -208,8 +208,10 @@ PRD's module list for `augment_graph/` does not carry. The control stays in
 
 **Provenance.** [fodiwalk/augment_graph/walks.py](../augment_graph/walks.py),
 [buckets.py](../augment_graph/buckets.py),
-[fodiwalk.py](../fodiwalk.py) (`_build_D_nbr_walk`, `_build_D_walk`,
-`_build_D_buckets`)
+[policy_nbr_walk.py](../augment_graph/policy_nbr_walk.py),
+[policy_walk.py](../augment_graph/policy_walk.py),
+[policy_buckets.py](../augment_graph/policy_buckets.py)
+(was `_build_D_nbr_walk`, `_build_D_walk`, `_build_D_buckets`)
 
 ---
 
@@ -418,7 +420,7 @@ defaulted to `v1` before, and `v1` no longer exists (see 13).
 `FORCE_PLANES`, and `_plane` RAISES when the augmentation did not build
 what the law reads.
 
-**Provenance.** [fodiwalk/fodiwalk.py](../fodiwalk.py)
+**Provenance.** [fodiwalk/model.py](../model.py)
 
 ---
 
@@ -513,7 +515,10 @@ of the roster survived the change of the law, and the leading group rose
 from 0.373 to 0.609.
 
 **Provenance.** [forces.py](../core/forces.py),
-[plan_contract.py](../core/plan_contract.py), [fodiwalk.py](../fodiwalk.py)
+[plan_contract.py](../core/plan_contract.py),
+[augment_graph/planes.py](../augment_graph/planes.py) (repointed
+2026-08-21: this code was `embed/planes.py` from 2026-08-20 to 2026-08-21,
+see CATALOG section 20)
 
 ---
 
@@ -973,7 +978,9 @@ The runs are in
 [results/walk_policies_cora.tsv](../../experiments/fodiwalk/results/walk_policies_cora.tsv).
 
 **Provenance.** [augment_graph/walks.py](../augment_graph/walks.py),
-[fodiwalk.py](../fodiwalk.py) (`_build_D_walk`, `_build_D_nbr_walk`),
+[policy_walk.py](../augment_graph/policy_walk.py),
+[policy_nbr_walk.py](../augment_graph/policy_nbr_walk.py)
+(was `_build_D_walk`, `_build_D_nbr_walk`),
 [experiments/fodiwalk/verify_modular.py](../../experiments/fodiwalk/verify_modular.py)
 
 ---
@@ -1069,5 +1076,1030 @@ Compare model cost with model cost, and do not read the TOTAL as a speed.
 
 **Provenance.** [augment_graph/__init__.py](../augment_graph/__init__.py),
 [augment_graph/far_pairs.py](../augment_graph/far_pairs.py),
-[fodiwalk.py](../fodiwalk.py), [misc/evaluation.py](../misc/evaluation.py),
+[model.py](../model.py), [misc/evaluation.py](../misc/evaluation.py),
 [results/walk_only.tsv](../../experiments/fodiwalk/results/walk_only.tsv)
+
+---
+
+## 19. UPDATE 2026-08-20 -- the god class is SPLIT into stage packages
+
+**Reason for the update.** On request: `fodiwalk/fodiwalk.py` had become a
+slop. It was 698 lines and it held FOUR jobs -- the configuration, the whole
+stage-2 augmentation, the stage-3 assembly, and the model class that should
+hold only the wiring. The module specification
+([fodiwalk-module.md](fodiwalk-module.md)) asks for three categories that
+the TREE can show, and one file that holds three of them shows none.
+
+The ten defects, with the evidence that
+[REFACTOR.md](REFACTOR.md) section 2 records:
+
+| # | defect | evidence |
+| --- | --- | --- |
+| D1 | god class: config, walk dispatch, three `_build_D_*`, the plane builder, the degree source, the plan builder, the kernel call | 698 lines, 4 jobs |
+| D2 | policy dispatch by an `if` chain on a string, in two methods, while the package already used registries for the laws, the weights and the update rules | `_build_D`, `graph_walk`, `_plane` |
+| D3 | the far-pair CSR merge written THREE times, each copy different | `np.concatenate` 26 times in one file |
+| D4 | hidden temporal coupling: `_build_planes` read `self.freq`, which an earlier method had to set | `self.freq =` at lines 179, 244, 539, 625, 691 |
+| D5 | parameter tunnels: `_build_D_nbr_walk(self, A, n, rng, info, t0)` passed a log dict and a wall clock into the algorithm | the signature |
+| D6 | a cross-module import of a PRIVATE name: `from .core.sell_c_sigma import make_plan, _step` | line 64 |
+| D7 | stage leak: stage 2 built `self.params`, which is physics; `jax.jit` and `device_put` lived in the model class | `augment_graph`, `_build_plan` |
+| D8 | `stats` was an untyped bag, and `_take` was a private helper of the wrong module | `_take` at the file end |
+| D9 | cryptic locals against the naming rule: `fw`, `fq`, `cc`, `fc`, `nk`, `cl`, `rr`, `k1`, `k2`. `fw` means "far weight" there and "the model" in the README | `_build_D_walk` |
+| D10 | an empty `models/` directory | `fodiwalk/models/` |
+
+**The tree that replaced it.** `config.py` (88) and `model.py` (200) at the
+top, the stage-2 policies in `augment_graph/`, the stage-3 assembly in
+`embed/`. `fodiwalk/fodiwalk.py` and `fodiwalk/models/` are REMOVED.
+
+**Nothing about the behaviour changed. Not one number.** The entries below
+are the entities the split ADDS. They are names for seams that already
+existed inside one file, and the code inside them moved line for line.
+
+---
+
+### 19.1 `Augmentation` -- the seam of stage 2 to stage 3
+
+EVERYTHING that stage 2 gives stage 3, and nothing else crosses. Before the
+split, a policy method wrote `self.freq`, `self.stats` and `self.info` on
+the model and `_build_planes` read `self.freq` later (D4). The order was
+the contract and no signature showed it. Now a policy RETURNS the four
+values and the model binds them at one place.
+
+```python
+@dataclasses.dataclass
+class Augmentation:
+    """What stage 2 builds. `D.data` IS the `h` plane."""
+    D: sp.csr_matrix
+    freq: np.ndarray | None     # (nnz,), aligned to `D.indices`, or None
+    stats: dict                 # the walk statistics, plus `freq` as a CSR
+    info: dict                  # the counts and the timings a log prints
+```
+
+`freq` is the `(nnz,)` DATA and `stats["freq"]` is the same values as a
+CSR. The two must keep the sparsity of `D`, thus the `.data` arrays line up
+entry by entry. A policy builds `freq` with the same `to_csr` call and the
+same keys as `D` for exactly that reason.
+
+**Provenance.** [augment_graph/result.py](../augment_graph/result.py)
+
+---
+
+### 19.2 `AugmentSpec`, `ForceSpec`, `PlanSpec` -- the narrow configs
+
+`Config` stays FLAT, public and unchanged: 39 fields, spelled the same,
+with the same default values. It is what a driver script builds, what
+`experiments/fodiwalk/*.py` passes, and what `tests/check_api.py` holds
+literally. A field that moves breaks a recorded command line.
+
+The narrowing happens at the SEAM. Each stage reads a FROZEN spec of its
+own knobs, thus a stage function cannot reach a knob of another stage and
+cannot edit the configuration of the run.
+
+```python
+AugmentSpec.from_config(cfg)    # 22 fields, augment_graph/result.py
+ForceSpec.from_config(cfg)      # 11 fields, embed/planes.py
+PlanSpec.from_config(cfg)       #  7 fields, embed/planner.py
+```
+
+The three cover every field of `Config` exactly one time, except
+`edge_rule`, which `AugmentSpec` and `ForceSpec` both hold: the `auto`
+degree source reads it, because a `low_deg` edge rule can leave a hub with
+no `h = 1` entry and the degree must then come from `A` (see 19.5 of
+`degrees.resolve_degrees`, and trap 4).
+
+`from_config` reads the attributes BY NAME and takes any object that has
+them:
+
+```python
+    @classmethod
+    def from_config(cls, cfg):
+        """The stage-2 fields of any config object with these names."""
+        return cls(**{f.name: getattr(cfg, f.name)
+                      for f in dataclasses.fields(cls)})
+```
+
+**WHY the specs live in the stage packages and not beside `Config`.** A
+spec in `config.py` would make `config.py` import `embed`, thus `core` and
+jax, for the import of a configuration. It would also give one class two
+names. `from_config` needs no import in the other direction, thus
+`augment_graph` and `embed` stay free of the model layer and the dependency
+runs one way. `Fodiwalk.__init__` builds the three one time and holds them
+as `self.aug_spec`, `self.force_spec` and `self.plan_spec`.
+
+**Provenance.** [config.py](../config.py),
+[augment_graph/result.py](../augment_graph/result.py),
+[augment_graph/planes.py](../augment_graph/planes.py) (repointed
+2026-08-21, see section 20),
+[embed/planner.py](../embed/planner.py)
+
+---
+
+### 19.3 `POLICIES` -- the pair-policy registry
+
+The stage-2 dispatch, as a table. It replaces an `if` chain on
+`cfg.pairs` that ran in two methods (D2). A chain on a name is what let a
+missing `freq` fall back to the planes of another law in silence (section
+13, and `plan_contract`).
+
+```python
+POLICIES = {"walk": policy_walk.build,
+            "walk_edges": policy_walk.build,
+            "nbr_walk": policy_nbr_walk.build}
+
+WALK_STATS = {"walk": policy_walk.pair_stats,
+              "walk_edges": policy_walk.pair_stats,
+              "nbr_walk": policy_nbr_walk.row_stats}
+```
+
+Two tables and not one, because the two questions are different.
+`POLICIES` gives the whole augmentation. `WALK_STATS` gives the WALKS
+ALONE, which `Fodiwalk.graph_walk` exposes: `walk` runs
+`walk_pair_stats` (windowed, undirected, capped, pruned) and `nbr_walk`
+runs `walk_rows` (directed, no window, no cap, NO PRUNE by design).
+
+Every builder is a MODULE FUNCTION with the same signature and no `self`:
+
+```python
+def build(A, n: int, spec: AugmentSpec, rng) -> Augmentation
+```
+
+`info` and the wall clock are made INSIDE the builder and not passed in
+(D5). The generator is the ONE generator of the run: the walks, the bucket
+sample, the far draw and the landmarks read it in that order.
+
+**To add a policy**, write that function in a `policy_*.py` module of
+`augment_graph/`, then add one entry to `POLICIES` -- and one to
+`WALK_STATS` when `graph_walk` must also work for it:
+
+```python
+from fodiwalk.augment_graph import policies
+policies.POLICIES["my_policy"] = build_my_policy
+fw = Fodiwalk(n_dim=64, pairs="my_policy")
+```
+
+An unknown name raises with the list of the known ones. Nothing else in
+the package needs an edit -- `README.md` holds the example that this
+document verified on Cora.
+
+The three builders keep their own second axis, and each axis is also a
+table: `EDGE_RULES` (`walk` against `walk_edges`) and `POLICY_RULES`
+(`cap` against `buckets`) in `policy_walk.py`; `NEIGHBOUR_RULES`,
+`SELECT` and `FREQ_MODES` in `policy_nbr_walk.py`. Each table keeps the
+default of the old `if` chain: an unknown name falls to `cap`, to `both`
+or to `pair`, exactly as the old branch did.
+
+**Provenance.** [augment_graph/policies.py](../augment_graph/policies.py),
+[policy_walk.py](../augment_graph/policy_walk.py),
+[policy_buckets.py](../augment_graph/policy_buckets.py),
+[policy_nbr_walk.py](../augment_graph/policy_nbr_walk.py)
+
+---
+
+### 19.4 `add_far_pairs` -- the ONE far-pair merge
+
+Three policies add long-range pairs to the matrix they built, and each one
+carried its own copy of the block (D3). The copies had DRIFTED: the
+`nbr_walk` copy shared one row array between `D` and `freq` and made
+`np.full(2m, w)`; the `walk` copy built `freq` first, `D` second, and wrote
+`np.full(m, w)` two times; the `buckets` copy built `D` first and `freq`
+second. A repair of one left the other two wrong.
+
+```python
+def add_far_pairs(D, freq, far, weights):
+    """The far pairs onto `D` and `freq`, in BOTH directions."""
+    m = far.shape[0]
+    near = D.tocoo()
+    D_out = sp.csr_matrix(
+        (np.concatenate([near.data, weights, weights]),
+         (np.concatenate([near.row, far[:, 0], far[:, 1]]),
+          np.concatenate([near.col, far[:, 1], far[:, 0]]))),
+        shape=D.shape)
+    ...
+```
+
+**THE ORDER OF THE COO TRIPLES IS PART OF THE RESULT.**
+`sp.csr_matrix((data, (row, col)))` SUMS a duplicate coordinate, and the
+sum order decides the last bit of a float. The near entries go first, then
+the pairs in the forward direction, then the pairs in the backward
+direction. Do not sort and do not group.
+
+The far weight is the only real difference between the callers, thus it is
+an ARGUMENT: one constant for each pair (`cap`, `buckets`, `nbr_walk`), or
+a landmark distance for each pair (`landmarks`). `freq` always gets 1.0,
+because a far pair was DRAWN and never observed. `np.full(2m, w)` and two
+`np.full(m, w)` hold the same bytes, thus the one merge is byte-exact for
+all three callers -- the golden gate proves it on the 16 cases.
+
+`merge.py` also holds **`drop_pairs_of(far, near, n)`**, the far filter of
+`nbr_walk`. It drops a far pair that `near` holds in EITHER direction,
+AFTER `sample_far_pairs` has drawn. `directed=True` inside the sampler
+gives the same PROPERTY and OTHER pairs, thus it breaks parity (section
+8.2). The filter must stay after the draw.
+
+**Provenance.** [augment_graph/merge.py](../augment_graph/merge.py)
+
+---
+
+### 19.5 `PLANE_BUILDERS` -- the plane registry, and its pair
+
+A plane is a `(nnz,)` array with one value for each stored pair of `D`, in
+`D`'s own pre-split CSR order. The law unpacks the tiles POSITIONALLY, thus
+a wrong plane is wrong PHYSICS and not an error. `Fodiwalk._plane` built
+them in a branch; the branch is now a table.
+
+```python
+PLANE_BUILDERS = {"h": _build_h, "freq": _build_freq, "w": _build_w}
+
+# The two tables are one contract: a name that one holds and the other
+# does not is a plane that is built and not asserted, or asserted and not
+# built.
+assert set(PLANE_BUILDERS) == set(PLANE_CHECKS)
+```
+
+**THE PAIRING IS NOW VISIBLE, and the module asserts it at import.**
+
+| table | file | what it holds |
+| --- | --- | --- |
+| `FORCE_PLANES` | `core/forces.py` | which planes a law reads, and in what ORDER |
+| `PLANE_BUILDERS` | `embed/planes.py` | how the VALUES of a plane name are made |
+| `PLANE_CHECKS` | `core/plan_contract.py` | what the name PROMISES about the values |
+
+**To add a plane, a person edits those three tables and nothing else.**
+Section 1.4 and section 13 record what happens when the three drift: a
+missing `freq` made `fdlinear` read a coefficient plane as `h`, the run
+went to NaN under an `fdlinear` label, and nothing raised.
+
+`build_planes(law, D, freq, pairs, policy)` walks `planes_of(law)` and
+takes the builder of each name. There is NO branch on the law. `pairs` and
+`policy` are carried only to NAME the augmentation in the message of a
+missing plane.
+
+`planes.py` also holds `ForceSpec` (19.2) and **`force_params(spec)`**, the
+traced scalars `dict(k1=, k4=, kr=, sign=)` that the law reads. That is
+PHYSICS, thus it belongs to stage 3; `Fodiwalk.augment_graph` built it
+inside stage 2 (D7).
+
+`degrees.py` holds **`resolve_degrees(D, G, spec, explicit=None)`**, the
+divisor of the row sum, with three sources in this order: `no_deg_norm`
+gives 1; an explicit array (`deg_source="A"` or `set_D(degrees=...)`) is
+the true degree of the graph; otherwise `degrees_from_D` counts the
+`h == 1` entries of a row. A row with none gets degree 0, `inv_deg_ext`
+becomes 0.0, and the kernel zeroes the WHOLE force of the row. The node
+freezes and nothing raises (section 14).
+
+**Provenance.** [augment_graph/planes.py](../augment_graph/planes.py),
+[augment_graph/degrees.py](../augment_graph/degrees.py) (both repointed
+2026-08-21 from `embed/`, see section 20),
+[core/plan_contract.py](../core/plan_contract.py),
+[core/forces.py](../core/forces.py)
+
+---
+
+### 19.6 `PlanSet` and `build_plans` -- the chunked row-range plan
+
+`build_plans(D, planes, degrees, spec, force_fn) -> PlanSet` is the
+stage-3 layout. It was `Fodiwalk._build_plan`, with the `jax.jit`,
+`jax.device_put` and `functools.partial` plumbing moved out of the model
+class (D7).
+
+```python
+@dataclasses.dataclass
+class PlanSet:
+    plans: list         # one plan for each chunk, on the device when resident
+    steps: list         # the jitted kernel of each chunk
+    inv_deg_ext: object # (n + 1,) on the device. GLOBAL, thus one array
+    chunk_rows: int     # the row count of a chunk. `forces` picks with it
+    resident: bool      # the plans stay on the device
+    stats: dict         # the model exposes it as `plan_stats`
+```
+
+**A CHUNK IS A ROW RANGE and never a pair set.** `core.sell_c_sigma.step`
+writes `dZ.at[rows].add(...)`, thus only DISJOINT rows make the parts
+additive. `ForceDirected.embed` slices `dZ` by the same range for its
+batches, thus the chunk and the batch are the same object. The rows outside
+`[a, b)` become empty, and `make_plan` gives an isolated row no virtual row
+at all, thus an empty row costs nothing in the plan of another chunk.
+
+**THE GLOBAL QUANTITIES STAY GLOBAL.** `degrees` is counted over the WHOLE
+`D` and a chunk only SLICES the planes with the CSR span of its rows. A
+degree counted on one chunk is not the degree of the node.
+
+`Fodiwalk.forces` then holds three lines: the chunk index from
+`row_start // chunk_rows`, the jitted step of that chunk, and the drop.
+
+**Provenance.** [embed/planner.py](../embed/planner.py),
+[core/sell_c_sigma.py](../core/sell_c_sigma.py)
+
+---
+
+### 19.7 `core.sell_c_sigma.step` -- the kernel, renamed and published
+
+The per-epoch kernel was `_step`, and the model imported it across a module
+boundary: `from .core.sell_c_sigma import make_plan, _step` (D6). A leading
+underscore is a promise that no other module reads the name. A
+cross-module import of it is a defect of the NAME and not of the code: the
+kernel was always public in fact, thus the promise was false and a reader
+could not know what `core` guarantees.
+
+```python
+def step(Z, plan, inv_deg_ext, params, n, force_fn):
+    """One fused pass over the whole padded plan -> full ``(n, d)`` dZ."""
+    ...
+
+# `step` is the public name (defect D6). `_step` stays as an alias:
+# `PlanCache` below, the docstrings of three modules and the tests name it.
+_step = step
+```
+
+The rename is a rename and nothing else. `_step` stays an ALIAS and
+`core/__init__.py` exports both names, thus every existing caller and every
+test that names `_step` keeps working. `embed/planner.py` imports `step`.
+
+**Provenance.** [core/sell_c_sigma.py](../core/sell_c_sigma.py),
+[core/__init__.py](../core/__init__.py)
+
+---
+
+### 19.8 `tests/golden.py` and `tests/check_api.py` -- the two new gates
+
+A code move needs a gate that costs seconds. The parity gate of section 12
+costs a GPU and about 18 minutes, thus it cannot run between two edits.
+
+**`golden.py` -- BEHAVIOUR.** It hashes what the augmentation and the plan
+build, on Cora, for one configuration of every branch of the pair policies:
+16 augment cases and 4 short embed runs.
+
+```bash
+.venv/bin/python -m fodiwalk.tests.golden --write   # record
+.venv/bin/python -m fodiwalk.tests.golden --check   # compare
+```
+
+Two halves, because the determinism differs. The AUGMENT half is pure
+NumPy, thus it is compared BYTE EXACT: the sha1 of `D.indptr`, `D.indices`,
+`D.data`, of every plane, of the degrees, of `freq`, of three `stats`
+arrays, plus the `info` counts, the plan statistics, and a digest of four
+draws of `fw.rng` AFTER the stage -- which catches a second generator, a
+moved call or one extra draw (trap 11). The EMBED half is JAX, and a split
+hub row makes the GPU scatter-add order free (section 15), thus it runs on
+the CPU backend and compares NUMBERS at `rtol = 1e-4`.
+
+**What golden.py CANNOT catch.** It reads ONE graph (Cora, 2708 nodes) and
+one seed (42). It holds no `chunk_host` case, no landmark case beyond
+`walk_landmarks`, and no case above `k_max`, thus `n_split > 0` -- the hub
+split of section 15 -- is never exercised. A digest of `Z` is also too
+sharp a tool: the same run differs in the last bit between two processes,
+thus the embed half compares five scalars and not a hash. It measures a
+code MOVE. It cannot say that a new feature is right.
+
+**`check_api.py` -- THE SURFACE.** Every list in it is LITERAL, and that is
+the point of the file. A check that reads `dataclasses.fields(Config)`
+compares `Config` to itself and passes whatever the refactor does.
+
+```bash
+.venv/bin/python -m fodiwalk.tests.check_api     # 0 = pass
+```
+
+It holds the 39 field names of `Config` with their default values, the 9
+keyword names of `Fodiwalk.__init__`, 13 methods, 17 attributes after a
+run, and the key sets of `info`, `plan_stats` and `stats`. The keys are a
+SUBSET rule: a LOST key fails, a NEW key passes. A lost key breaks a log or
+a `RESULT` line; a stage split may legitimately add one. It also asserts
+the behaviours a name cannot show: an unknown keyword RAISES `TypeError`,
+`fit` RAISES `NotImplementedError`, and `_build_planes` / `_build_degrees`
+stay callable on the model, because `golden.py` drives them.
+
+**What check_api.py CANNOT catch.** It proves that a NAME exists and that
+it answers; it does not prove that the number behind the name is right. It
+runs on a 60-node synthetic graph for 5 epochs. `golden.py` is the gate for
+the values, and this file is the gate for the shape of the surface.
+
+**The measured state, 2026-08-20:**
+
+```
+$ .venv/bin/python -m fodiwalk.tests.golden --check
+GOLDEN OK (both)
+
+$ .venv/bin/python -m pytest fodiwalk/tests -q -m "not parity and not big"
+53 passed, 2 skipped, 9 deselected in 80.09s (0:01:20)
+
+$ .venv/bin/python -m fodiwalk.tests.check_api
+[check_api] API OK: 39 Config fields, 13 methods, 17 attributes, 24 keys
+```
+
+**The count of the suite MOVES, and only a failure is a defect.** It was 52
+before the split. It reached 136 while `fodiwalk.py` and the two
+equivalence test files existed together. It is 53 above, on the tree with
+the god class deleted, and 66 after `tests/test_structure.py` added the
+thirteen tests that make the new shape a gate:
+
+```
+$ .venv/bin/python -m pytest fodiwalk/tests -q -m "not parity and not big"
+66 passed, 2 skipped, 9 deselected in 72.74s (0:01:12)
+```
+
+The 2 skips are `test_policy_equivalence.py` and
+`test_embed_equivalence.py`. They compared the new modules against the
+methods of `fodiwalk.py` and they SKIP by an `importorskip` guard now that
+the file is gone. They retire with the thing they compared against, and
+`golden.py` is what carries the property forward.
+
+**Provenance.** [tests/golden.py](../tests/golden.py),
+[tests/check_api.py](../tests/check_api.py),
+[tests/test_golden.py](../tests/test_golden.py)
+
+---
+
+### 19.9 What did NOT change
+
+| kept | proof |
+| --- | --- |
+| the physics: the laws, the planes, the parameters, the degree rule | the plane digests and `Z` of the golden gate |
+| the walks: `uniform_walks`, `node2vec_walks`, `make_walker`, `walk_rows`, `walk_pair_stats` | not one line of `walks.py` moved. `make_walker` still returns `uniform_walks` ITSELF at `p = q = 1` |
+| the weight rules, the caps, the buckets, the far draw, the landmarks | `weights.py`, `pairs.py`, `buckets.py`, `far_pairs.py`, `landmarks.py` are untouched |
+| the update rules, the drop, the measurements | `misc/` is untouched |
+| the ORDER of the one generator | the `rng_state` digest of all 16 golden cases is byte exact |
+| the numbers | `GOLDEN OK (both)`: the augment half byte exact, the embed half inside `rtol = 1e-4` |
+| the public surface | `API OK: 39 Config fields, 13 methods, 17 attributes, 24 keys` |
+
+`Config` did not lose a field, gain a field or change a default.
+`Fodiwalk` did not lose a method or an attribute. `_build_planes` and
+`_build_degrees` stay on the model as thin forwards to `embed/`.
+
+---
+
+### 19.10 Where the CODE and REFACTOR.md disagree
+
+The code is the authority. Three differences, and each one is deliberate:
+
+1. **The stage specs are NOT in `config.py`.** REFACTOR.md section 3 puts
+   "Config (FLAT, unchanged fields) + the stage specs" in `config.py`. Each
+   spec instead lives in the package that READS it (19.2). A spec in
+   `config.py` would pull `embed`, thus `core` and jax, into the import of
+   a configuration, and it would break the one-way dependency the same
+   document asks for in section 3.
+2. **`ForceSpec` holds `edge_rule`, which section 3.2 does not list.** The
+   `auto` degree source reads it. Without it, `resolve_degrees` cannot see
+   that a `low_deg` rule may leave a hub with no `h = 1` entry.
+3. **`merge.py` holds a second function, `drop_pairs_of`.** Section 3 names
+   only `add_far_pairs`. The far filter of `nbr_walk` is the other half of
+   the same seam and it belongs beside the merge (19.4).
+
+Two gate COMMANDS of section 5 do not measure what they say, and both
+were true before the split as well:
+
+- **G4** ("no module > 300 lines except `core/sell_c_sigma.py`") also fails
+  on `tests/test_contracts.py` (468), `core/force_directed.py` (432) and
+  `augment_graph/walks.py` (422). All three are PRE-EXISTING files that the
+  split did not touch. `model.py` is 200 and `config.py` is 88, thus the
+  rule the split owns holds. `tests/test_structure.py` now encodes the rule
+  with the three files PINNED at their measured size and the test files
+  excluded, thus a file that needs more needs a split and not a raised cap.
+- **G6** (`grep -c 'sp.csr_matrix((np.concatenate' fodiwalk/augment_graph/*.py`)
+  prints 0 for every file, including `merge.py`. The pattern needs the two
+  calls on ONE line and `merge.py` wraps them. It printed 1 on the old
+  `fodiwalk.py`, which held THREE copies. The command under-counts and it
+  cannot show what it was written to show; `grep -c 'np.concatenate'` gives
+  6 in `merge.py` and the duplication is gone by reading.
+
+One small duplication remains and it changes no number: `Fodiwalk.forces`
+reads `self.cfg.random_drop_rate` and `self.cfg.drop_strategy` directly,
+although `ForceSpec` also holds the two fields.
+
+---
+
+### 19.11 REPAIR -- the provenance links that pointed at the deleted file
+
+Five sections cited `[fodiwalk.py](../fodiwalk.py)`, which no longer
+exists. A dead link is a factual error and not content, thus the LINKS are
+repointed at the modules that now hold that code, and **not one other word
+of those sections changed.**
+
+| section | was | now |
+| --- | --- | --- |
+| 4. Pair policies | `fodiwalk.py` (`_build_D_nbr_walk`, `_build_D_walk`, `_build_D_buckets`) | `augment_graph/policy_nbr_walk.py`, `policy_walk.py`, `policy_buckets.py` |
+| 10. `class Fodiwalk` | `fodiwalk/fodiwalk.py` | `fodiwalk/model.py` |
+| 13. the shell laws | `fodiwalk.py` | `augment_graph/planes.py` (repointed 2026-08-21, see section 20; was `embed/planes.py`) |
+| 17. the walk policies | `fodiwalk.py` (`_build_D_walk`, `_build_D_nbr_walk`) | `augment_graph/policy_walk.py`, `policy_nbr_walk.py` |
+| 18. the non-walk removal | `fodiwalk.py` | `model.py` |
+
+Section 16.5 keeps its link to `fodiwalk.py` (`_build_D_ball`,
+`_build_D_sampled`). That code was REMOVED by section 18 and no module
+holds it, thus there is nothing to repoint to; the link records where the
+removed code was.
+
+---
+
+**Adopted at.** The fodiwalk package after the walk-only reduction of
+section 18, on the commit that lands the split. The tree before it is the
+tag `fodiwalk-pre-refactor` (89abaf2), which is the revert point.
+
+**Provenance.** [config.py](../config.py), [model.py](../model.py),
+[augment_graph/result.py](../augment_graph/result.py),
+[augment_graph/policies.py](../augment_graph/policies.py),
+[augment_graph/policy_walk.py](../augment_graph/policy_walk.py),
+[augment_graph/policy_buckets.py](../augment_graph/policy_buckets.py),
+[augment_graph/policy_nbr_walk.py](../augment_graph/policy_nbr_walk.py),
+[augment_graph/merge.py](../augment_graph/merge.py),
+[augment_graph/planes.py](../augment_graph/planes.py) (repointed
+2026-08-21 from `embed/`, see section 20),
+[augment_graph/degrees.py](../augment_graph/degrees.py) (same repointing),
+[embed/planner.py](../embed/planner.py),
+[tests/golden.py](../tests/golden.py),
+[tests/check_api.py](../tests/check_api.py),
+[dev-docs/REFACTOR.md](REFACTOR.md)
+
+
+---
+
+## 20. UPDATE 2026-08-21 -- the stage boundary moves; the RECIPE, named
+
+**Reason for the update.** Section 19's split put the plane builder and the
+degree resolver in `embed/` -- stage 3. `dev-docs/fodiwalk-module.md` was
+then sharpened with one sentence about stage 3 (embedding): "This stage
+shall not do any graph analysis or data preparation. It must only consume
+the data. Its main goal is to apply the force function on the input data
+using the best implementation to optimize resource utilization." A plane
+is a choice about WHICH VALUES a law needs; a degree is a choice about
+WHICH ROW would freeze without an explicit one. Both are choices about
+DATA, decided by the pair policy and the law together, and neither is a
+property of the kernel that later applies them. Building them in `embed/`
+put data preparation inside the consumption stage.
+
+**What moved, and what did not.** `embed/planes.py` -> new
+`augment_graph/planes.py` (`ForceSpec`, `PLANE_BUILDERS`, `build_planes`,
+`force_params`). `embed/degrees.py` -> new `augment_graph/degrees.py`
+(`resolve_degrees`). No line of a function BODY changed; the error
+messages, the plane registry, the three-source order of a degree are all
+verbatim. `embed/planner.py` (`PlanSpec`, `PlanSet`, `build_plans`, the
+`jax.jit`/`device_put` plumbing) did NOT move: the plan build and the
+jitted step consume a finished recipe, and stay stage 3.
+
+**What widened.** `augment_graph.result.Augmentation` (19.1) gained three
+fields, `planes`, `degrees` and `params`, all defaulting to `None`: a
+policy's own `build()` does not know the force law, thus it cannot fill
+them, and `Fodiwalk.augment_graph` fills them once the law is known --
+still calling `augment_graph` code, immediately after `policies.build`
+returns. `augment_graph`'s allowed imports widen from "numpy, scipy only"
+to "numpy, scipy, `core`" (`REFACTOR.md` section 3): the moved code reads
+`core.forces.planes_of`/`fuse` and `core.plan_contract.PLANE_CHECKS` to
+know a law's plane contract, and knowing the contract is itself part of
+preparing that law's data. `embed/` narrows the other way: it still reads
+`core` (for `make_plan`, `step`, `plan_contract.check_plan`), and now
+builds no plane and resolves no degree at all.
+
+### 20.1 The RECIPE
+
+**One augmentation policy plus one force law, plus the data they exchange,
+is a RECIPE.** The pairing is not incidental: `_build_planes` in `19.1`'s
+predecessor already read `self.freq`, which only a MATCHING policy had
+set, and `plan_contract.check` exists because a mismatched pair is a
+silent wrong-physics run and not an error. A recipe names that pairing on
+purpose, at the place that assembles it.
+
+Baseline Fodiwalk's recipe: pairs `nbr_walk` (or `walk` / `walk_edges`)
+feeding the law `fdlinear`'s two planes `(h, freq)`, or `fdlinear_fused`'s
+one fused plane `(w,)`. A different augmentation prepares a different
+data set for the SAME law -- `walk`/`buckets`/`far` builds a different
+`freq` than `nbr_walk` does, for instance -- and a different law reads a
+different plane set from the SAME augmentation. `augment_graph` is where
+one full recipe is assembled, end to end, from the walk to the force
+params; `embed` is the one engine every recipe shares, and it never learns
+which recipe it is running -- it reads planes, a degree array and a params
+dict, by position and by name, and nothing else.
+
+```python
+# fodiwalk/model.py -- one recipe, assembled
+aug = policies.build(G, n, self.aug_spec, self.rng)   # the pairs: augment_graph
+planes  = build_planes(self.law, D, self.freq, ...)   # the law's data: augment_graph
+degrees = resolve_degrees(D, G, self.force_spec, ...)  # augment_graph
+params  = force_params(self.force_spec)                # augment_graph
+ps = build_plans(D, planes, degrees, self.plan_spec, self.force_fn)  # embed: CONSUMES
+```
+
+**Why the kernel must never learn the recipe.** `core.sell_c_sigma.step`
+unpacks the plane tuple POSITIONALLY (trap 3, `REFACTOR.md` section 4): it
+has no name for what it reads, only an order. That is what makes ONE
+engine serve every recipe -- and it is also why the plane contract
+(`plan_contract.check`) must run BEFORE the kernel ever sees the data: a
+recipe mismatch caught at the seam is a raised `PlaneContractError`; a
+recipe mismatch that reaches the kernel is a silent wrong-physics run
+under the right law's name (section 1.4, the 2026-08-18 defect this whole
+package exists to stop repeating).
+
+### 20.2 What did NOT change
+
+The physics, the force laws, the numbers. `Config`'s 39 fields, names and
+defaults. The public surface of `Fodiwalk`
+(`tests/check_api.py` reports `API OK: 39 Config fields, 13 methods, 17
+attributes, 24 keys`, unchanged). `_build_planes(D)` and `_build_degrees(D,
+G)` as callable model methods -- `tests/golden.py` still calls both by
+those names.
+
+### 20.3 The gates, re-run after the move
+
+| gate | command | result |
+| --- | --- | --- |
+| G1 | `python -m fodiwalk.tests.golden --check` | `GOLDEN OK (both)` -- BYTE EXACT |
+| G2 | `pytest fodiwalk/tests -q -m "not parity and not big"` | `66 passed, 2 skipped, 9 deselected` |
+| G3 | `python -m fodiwalk.tests.check_api` | `API OK`, exit 0 |
+| G4-G8 | `pytest fodiwalk/tests/test_structure.py` | `13 passed`, one contract widened (`test_augment_graph_imports_no_embed_no_model`, now allows `core`) |
+
+Independent checks, run against the moved code and not merely re-reported:
+`augment_graph()` still calls the augmentation exactly ONCE per `embed()`
+call (trap 12, instrumented count); `set_D` still bypasses the walk and
+keeps the handed matrix; a missing `freq` still raises `PlaneContractError`
+naming the plane and the law. Two negative controls, planted in scratch
+copies and never the live tree: `embed/planner.py` importing
+`augment_graph.planes` fails `test_embed_imports_only_core_no_augment_graph_no_model`,
+naming the file; `augment_graph/policies.py` importing `embed.planes` fails
+`test_augment_graph_imports_no_embed_no_model`, naming the file.
+
+**Adopted at.** The fodiwalk package immediately after section 19's split,
+same session, before the tree was committed.
+
+**Provenance.** [augment_graph/planes.py](../augment_graph/planes.py),
+[augment_graph/degrees.py](../augment_graph/degrees.py),
+[augment_graph/result.py](../augment_graph/result.py),
+[augment_graph/__init__.py](../augment_graph/__init__.py),
+[embed/__init__.py](../embed/__init__.py),
+[embed/planner.py](../embed/planner.py),
+[model.py](../model.py), [config.py](../config.py),
+[dev-docs/fodiwalk-module.md](fodiwalk-module.md),
+[dev-docs/REFACTOR.md](REFACTOR.md) section 8.
+
+
+---
+
+## 21. UPDATE 2026-08-21 -- the engine, the pipeline and the model, split into three classes
+
+**Reason for the update.** On request: `ForceDirected` mixed two concerns
+under one name -- a domain-agnostic RELAXATION ENGINE (the epoch loop, the
+batching, the callbacks, the `Z` update) and the Fodiwalk PROJECT's own
+pipeline stubs (`make_graph`, `augment_graph`, `fit`). A class named for
+embedding should not declare methods about how a graph is built or
+augmented; those are pipeline concerns, and a future non-Fodiwalk model
+built on the same engine would inherit stubs it has no use for.
+
+**The three-tier hierarchy.**
+
+```
+core.ForceDirectedEmbedding   the engine. embed(D, epochs, ...) relaxes Z
+        |                     against a GIVEN D. forces() is its one hook.
+        |                     NO make_graph, NO augment_graph, NO fit.
+        v
+fodiwalk.Fodiwalk_base        the pipeline CONTRACT. make_graph, graph_walk,
+        |                     augment_graph, embed(G, ...) -- all RAISE.
+        |                     `forces` is NOT re-declared: it is already
+        |                     abstract on the engine, and every concrete
+        |                     subclass must supply it too.
+        v
+fodiwalk.Fodiwalk             the concrete, baseline model. Implements
+                              every one of the five.
+```
+
+`ForceDirected` -> `ForceDirectedEmbedding` is a RENAME, and
+`make_graph`/`augment_graph`/`fit` are REMOVED from it, not deprecated: no
+alias survives, and every caller in the package was updated in the same
+change (`core/__init__.py`, `README.md`, the tests).
+
+### 21.1 `Fodiwalk.embed` -- the orchestration, made explicit
+
+Before this split, `ForceDirected.embed(G, ...)` did two things at once: it
+called `self.augment_graph(G)` to get `D`, THEN ran the epoch loop against
+it. Now that the engine takes `D` directly, `Fodiwalk.embed` does the
+first half explicitly and hands the result to the engine by NAME (not
+`super()`, which would resolve to `Fodiwalk_base.embed` -- the abstract
+stub one layer up -- and raise):
+
+```python
+def embed(self, G, epochs=1000, lr=None, Z=None, batch_count=1,
+          epsilon=None, **kwargs):
+    """`augment_graph(G)` ONCE (trap 12), then the engine's loop on `D`."""
+    self.G = G
+    D = self.augment_graph(G, **kwargs)
+    return ForceDirectedEmbedding.embed(
+        self, D, epochs=epochs, lr=lr, Z=Z, batch_count=batch_count,
+        epsilon=epsilon, **kwargs)
+```
+
+Trap 12 (`dev-docs/REFACTOR.md` section 4, item 12) is unchanged by
+construction: `augment_graph` is called exactly once, right here, and the
+engine's own `embed` never calls it -- it no longer CAN, it does not know
+the method exists.
+
+### 21.2 `fit()` -- removed, not deprecated
+
+`ForceDirected.fit(data, epochs)` was `self.embed(self.make_graph(data),
+epochs=epochs)`. `make_graph` is a STUB in every concrete model of this
+project (`fodiwalk/make_graph/datasets.py` is the real stage-1 reader),
+thus `fit` promised a stage that was never real, and `Fodiwalk.fit` always
+raised `NotImplementedError`. Removing it outright, rather than keeping
+the raise, means `hasattr(fw, "fit")` is `False` -- a caller gets an
+`AttributeError` naming the missing method, not a raised exception whose
+message has to be read to learn the same fact.
+
+### 21.3 What did NOT change
+
+The physics, the numbers, `Config`'s 39 fields. The PUBLIC signature of
+`Fodiwalk.embed(G, epochs=..., lr=..., Z=..., batch_count=..., epsilon=...)`
+-- every existing caller (`tests/harness.py`,
+`experiments/fodiwalk/bench_fodiwalk.py`) is unchanged. `check_api.py`
+reports `API OK` with 12 methods (`fit` dropped from the recorded 13).
+
+### 21.4 The gates, re-run after the split
+
+| gate | result |
+| --- | --- |
+| `python -m fodiwalk.tests.golden --check` | `GOLDEN OK (both)` -- BYTE EXACT |
+| `pytest fodiwalk/tests -q -m "not parity and not big"` | `66 passed, 2 skipped, 9 deselected` |
+| `python -m fodiwalk.tests.check_api` | `API OK`, 12 methods, exit 0 |
+| `pytest fodiwalk/tests/test_structure.py` | `13 passed` (the `core/force_directed.py` size pin lowered 432 -> 421) |
+| GPU parity P1 | re-run after the split, see `dev-docs/REFACTOR.md` |
+
+Independent checks: the MRO is
+`Fodiwalk -> Fodiwalk_base -> ForceDirectedEmbedding -> object`; `fit` is
+absent from all three; `ForceDirectedEmbedding` has neither `make_graph`
+nor `augment_graph`; `augment_graph` is still called exactly once per
+`embed`; `Fodiwalk_base`'s five abstracts (`make_graph`, `graph_walk`,
+`augment_graph`, `embed`, and the inherited `forces`) all raise
+`NotImplementedError`; `ForceDirectedEmbedding.embed(D, epochs=1)` runs
+STANDALONE given a bare `D` and a borrowed `forces` function, proving the
+engine needs nothing else.
+
+**Adopted at.** The fodiwalk package immediately after section 20's seam
+move, same session.
+
+**Provenance.** [core/force_directed.py](../core/force_directed.py),
+[base.py](../base.py), [model.py](../model.py).
+
+
+---
+
+## 22. FINDING 2026-08-21 -- `task_hop`'s `vector`/`fodined` claim was wrong
+
+**Found by** a peer session building `evaluator/`, cross-checking
+`fodiwalk/misc/evaluation.py`'s docstring against the live
+`fodined/modular.py`. Confirmed independently here, from THREE sources
+that agree with each other and not with the docstring:
+
+1. `fodined/modular.py:632`, live: `sp_X = np.linalg.norm(Z[u_of[...]] -
+   Z[v_of[...]], axis=1)[:, None]` -- ONE column. Two `vector`-shaped
+   lines sit COMMENTED OUT directly above it.
+2. `fdmap_backup/fodined/modular.py` (mtime 2026-08-15 09:55) has the
+   IDENTICAL three-line block. `experiments/modular-graphs/modular_cora_khop3.log`
+   (mtime 2026-08-15 00:29, the log `dev-docs/PLAN.md`/`FINDINGS.md` cite
+   for the recorded `r2 = 0.257`) was generated in that same window --
+   the published number is a ONE-feature number, not `n_dim`.
+3. `experiments/other-ge/bench_other_ge.py:419`, independently: "This is
+   the same feature that `fodined/modular.py` uses NOW, thus the numbers
+   are comparable" -- describing its own one-column
+   `np.linalg.norm(Z[u]-Z[v])[:, None]`.
+
+`dev-docs/CATALOG.md` section 16.1 (2026-08-19) asserted the opposite --
+`"the hop features | task_hop(feature="vector") IS modular.py's
+|Z[u]-Z[v]|"` -- four days AFTER the code and the published log already
+used `distance`. That entry is not corrected in place (nothing is ever
+removed from this catalog); this entry is the correction.
+
+**Repaired.** `fodiwalk/misc/evaluation.py::task_hop`: the docstring now
+names `distance` as `fodined/modular.py`'s protocol (shared with
+`other-ge/bench_other_ge.py`, on that file's own word), and `vector` as
+NOT corresponding to any baseline recorded in this repository. The
+DEFAULT changed `"vector"` -> `"distance"`: every caller in this
+repository (`experiments/fodiwalk/bench_fodiwalk.py`,
+`experiments/fdwalk/bench_fdwalk.py`, `tests/harness.py`) passes
+`feature` explicitly in a loop over both, thus the default was never
+read and this is behaviour-NEUTRAL for every existing run -- verified by
+grep before the change, and by the golden gate and the full suite after
+it. The `200`/`(128, 64)`/`early_stopping=True` sentence beside it, about
+the MODEL hyperparameters and not the feature width, was already correct
+and is unchanged.
+
+**A second claim, checked and found FALSE.** The same peer session
+initially reported that `edge_features` L2-normalizes the Hadamard
+product. It does not, in either `fodiwalk/misc/evaluation.py` or
+`fodined/link_prediction.py` -- both are the bare elementwise product,
+byte-identical, confirmed by a `grep` for normalization across all four
+evaluation sources in the repository returning nothing. The peer
+retracted this independently after re-checking; recorded here only so a
+future session does not have to re-derive that there was never anything
+to fix.
+
+**A related finding, not a defect of THIS package.** `hop_sample` (same
+file) does not filter hop-1 pairs itself -- its only guard is `d > 0`
+(self-pairs, unreachable pairs). Every caller in this repository filters
+`d >= hop_min` afterward (`tests/harness.py`); `hop_sample` itself does
+not enforce it. No number in this repository is wrong because of this --
+every existing caller already filters -- but a FUTURE caller that forgets
+would silently score an easier problem, the same class of defect as an
+unfiltered NCBI star (section 16.4). Repaired with a docstring warning
+only, naming the guard and the convention; the function's BEHAVIOUR does
+not change, because every recorded number already depends on today's
+unfiltered output being filtered by the caller, not by this function.
+
+**Adopted at.** The fodiwalk package immediately after section 21's class
+split, same session.
+
+**Provenance.** [misc/evaluation.py](../misc/evaluation.py),
+[../../fodined/modular.py](../../fodined/modular.py) line 632,
+[../../fdmap_backup/fodined/modular.py](../../../fdmap_backup/fodined/modular.py),
+[../../experiments/other-ge/bench_other_ge.py](../../experiments/other-ge/bench_other_ge.py)
+line 419.
+
+---
+
+## 23. UPDATE 2026-08-25 -- the SELL-C-sigma algorithm becomes ONE package, `sellcsigma`
+
+**Reason for the update.** The repository held the algorithm FIVE times:
+`fodined/embedding/sell_c_sigma.py` (547 lines),
+`fodiwalk/core/sell_c_sigma.py` (558 lines), and three more under
+`archive/` -- `fdge_jax_sell_c_sigma/embedding/sell_c_sigma.py`, the
+ancestor `fdmap_bucketed_bench_jax.py`, and a torch port of the same plan
+builder, `fdmap_bucketed_bench_torch.py`. The two live copies had NOT
+diverged in the algorithm, but a copy that nobody diffs is a defect that
+waits for the first fix applied to one of the two.
+
+**What it is.** A new top-level package holding the ONE implementation:
+
+```
+sellcsigma/
+  __init__.py         the public surface
+  sell_c_sigma.py     build_ladder, make_plan, step, PlanCache, to_csr
+  PARITY.md           the evidence, dated 2026-08-25
+  tests/
+    m1_old_vs_new.py  the one-window old-against-new script
+    test_parity.py    the permanent gates
+```
+
+**Why a NEW package and not a home inside one of the two.** Both other
+directions are wrong. `core` declares itself self-contained (this package's
+`core/__init__.py`, plus `test_contracts.test_core_imports_only_core`),
+thus `core` must not read `fodined`. And `fodined` reading `fodiwalk` makes
+the older package depend on the newer one, which the four benchmark scripts
+under `experiments/` then inherit. `sellcsigma` reads NO package of this
+repository, thus every dependency points at it and a cycle is impossible.
+
+**The common argument set, which is why this was a move and not a rewrite.**
+All SEVEN live call sites of `make_plan` pass the same set, thus the shared
+signature is the one that already existed and nothing was generalized:
+
+```python
+plan, inv_deg_ext, stats = make_plan(
+    D, planes, degrees=degrees, b_cells=..., k_max=..., ladder_base=...)
+kernel = jax.jit(functools.partial(step, n=n, force_fn=force_fn))
+dZ = kernel(Z, plan, inv_deg_ext, params)
+```
+
+`planes` is a 2-tuple at every live site. The two chunked callers
+(`embed/planner.py`, `experiments/fdwalk/bench_fdwalk.py`) slice `D` and the
+planes BEFORE the call and pass GLOBAL `degrees`; that is a caller concern
+and needs nothing from the package.
+
+**`to_csr` -- the ONE name added.** `fodined/embedding/shell_force.py` line
+69 imports `_to_csr`, and gate D6 (`tests/test_structure.py`) forbids a
+plain module to import a private name of another module. A shared package
+must therefore offer a public one. `_to_csr` stays as an alias, the same
+pattern `step`/`_step` already uses. No other name changed.
+
+**`core/sell_c_sigma.py` is now a FORWARDER**, 46 lines, and it is part of
+the design and not debt. It holds no logic. It imports the public names by
+name -- never `import *`, which would skip `_step` and `_to_csr` unless
+`__all__` named them -- and binds the two private aliases by ASSIGNMENT,
+thus gate D6 stays satisfied.
+
+**The one new external dependency.** This file, alone in `core`, also
+imports `sellcsigma`. Every other module of `core` still imports numpy,
+scipy, jax and `core` only. The structure gates read `fodiwalk.*` imports
+only and are therefore silent on it, thus it is recorded here and in
+`core/__init__.py` rather than left for a reader to discover.
+
+**The evidence.** [forcedirected/PARITY.md](../../forcedirected/PARITY.md)
+(moved there 2026-08-26, section 24). The
+copy was byte identical
+(sha256 `cfdbe266...318d`) before any edit, and against the `fodined` copy
+the algorithm region is identical under `ast.unparse` with docstrings
+stripped. `build_ladder` exact over 45 cases; `make_plan` exact on every
+array, dtype and stat over four graphs; `step` bit-exact on Cora and on a
+path graph, and 1.4e-09 to 3.2e-09 relative where a split hub row makes the
+scatter nondeterministic -- which is section 15's mechanism and not this
+change.
+
+**NOT claimed.** No bit equality of a long run. Section 15 and
+`experiments/fdwalk/FINDINGS.md` lines 1100-1182 show a 2000-epoch feedback
+loop amplifies one 1.0 ULP scatter to about 5.4e-06 relative with no change
+to the code at all.
+
+**Adopted at.** 2026-08-25, repository at `89abaf2`. The consumers were NOT
+rewired: they keep their import paths through the two forwarders. A rewire
+is a separate decision and was deliberately not taken here.
+
+**Provenance.** `sellcsigma/sell_c_sigma.py` and `sellcsigma/PARITY.md`,
+both ABSORBED into `forcedirected/` on 2026-08-26 (section 24) --
+[forcedirected/sell_c_sigma.py](../../forcedirected/sell_c_sigma.py),
+[forcedirected/PARITY.md](../../forcedirected/PARITY.md);
+[core/sell_c_sigma.py](../core/sell_c_sigma.py),
+[../../fodined/embedding/sell_c_sigma.py](../../fodined/embedding/sell_c_sigma.py).
+
+---
+
+## 24. UPDATE 2026-08-26 -- the engine becomes the root package `forcedirected`, and `sellcsigma` is absorbed into it
+
+**Reason for the update.** Two of them, and they are one decision.
+
+1. `ForceDirectedEmbedding` goes back to **`ForceDirected`**. The 2026-08-21
+   rename (section 21) named the class for what it stopped doing. The class
+   is the force-directed relaxation engine, and that is what the name says.
+2. `sellcsigma` (section 23) was a ROOT package for ONE kernel with ONE
+   caller. The reason it sat at the root -- `fodined` reads it and must not
+   be made to depend on `fodiwalk` -- applies to the ENGINE as well, and the
+   engine already reads the kernel. A separate package for the kernel alone
+   was therefore overkill: the same import rule, one package instead of two.
+
+**What it is.**
+
+```
+forcedirected/            the shared engine. numpy, scipy, jax ONLY.
+  __init__.py             the public surface
+  force_directed.py       class ForceDirected, class Callback_Base
+  sell_c_sigma.py         build_ladder, make_plan, step, PlanCache, to_csr
+  csr.py                  row_of, n_rows
+  optim.py                RULES, STATE_ARRAYS, state_arrays
+  tests/                  test_parity.py, reconstruct_pre_unification.py,
+                          m1_old_vs_new.py
+  PARITY.md               the kernel evidence, now with section 9
+```
+
+**THE IMPORT RULE, and it is the whole reason for the shape.**
+`forcedirected` imports numpy, scipy, jax and its own modules, and NOTHING
+of this repository. `fodined` reads it, `fodiwalk` reads it, and neither
+reads the other. Every dependency points AT the engine, thus a cycle is
+impossible. This is section 23's rule, unchanged, applied to a bigger unit.
+
+**Why `csr.py` and `optim.py` moved too, and it is not scope creep.**
+`force_directed.py` does `from .csr import n_rows` at module level and
+`from ..misc import optim` inside `set_rule`. At the root the second points
+outside the package, and `updateZ` dispatches through those rules, thus the
+engine cannot run without them. Both moved; both old paths forward.
+
+**The forwarders.** Four, all of them logic-free:
+
+| path | forwards to |
+| --- | --- |
+| [`core/force_directed.py`](../core/force_directed.py) | `forcedirected.force_directed` |
+| [`core/sell_c_sigma.py`](../core/sell_c_sigma.py) | `forcedirected.sell_c_sigma` (was `sellcsigma`) |
+| [`core/csr.py`](../core/csr.py) | `forcedirected.csr` |
+| [`misc/optim.py`](../misc/optim.py) | `forcedirected.optim` |
+
+Plus [`fodined/embedding/sell_c_sigma.py`](../../fodined/embedding/sell_c_sigma.py),
+repointed from `sellcsigma` to `forcedirected`. `fodined` still imports no
+`fodiwalk`, and it must never be made to.
+
+Each forwarder imports the public names BY NAME -- never `import *` -- and
+binds `_step` / `_to_csr` by ASSIGNMENT, thus gate D6 stays satisfied. The
+`optim` forwarder re-exports the SAME function objects, which is forced:
+`tests/test_smoke.py` asserts `fw.rule is optim.RULES["plain"]` with `is`,
+and a forwarder that rebuilt the dict would fail it. That failure would be
+correct, and the fix would be the forwarder.
+
+**NO `ForceDirectedEmbedding` alias is kept, anywhere.** The user asked for
+a rename, and a lingering alias is how two names for one class survive
+forever. A caller that still says the old name gets an `ImportError`. The
+name is recorded here, in section 21 and in the module docstrings as
+HISTORY, and nowhere as an import.
+
+**The kernel moved with sha256 UNCHANGED**, `0406d2ec...bebe`, before and
+after. That matters beyond tidiness:
+[`forcedirected/tests/reconstruct_pre_unification.py`](../../forcedirected/tests/reconstruct_pre_unification.py)
+is the only route back to the pre-unification `core/sell_c_sigma.py`, it
+works by reversing enumerated edits, and it pins that exact sha. One line
+changed in it -- `SOURCE` -- and it still prints `cfdbe266...318d`, `MATCH`,
+exit 0 from the new home. `sellcsigma/` was untracked, thus its removal was
+permanent and the sha check ran BEFORE it.
+
+**One stale name survives on purpose.** `forcedirected/sell_c_sigma.py`
+line 152 still reads `Parity record: sellcsigma/PARITY.md`. Its sha256 is
+the anchor of the reconstruction above; an editorial fix inside that file
+would break the route back. `PARITY.md` section 9 states the correction.
+
+**The gates.** No number changed, and that was the requirement. Golden
+`GOLDEN OK (both)` with the augment half BYTE EXACT; `check_api` 39 Config
+fields, 12 methods, 17 attributes, 24 keys; the `fodiwalk` suite filtered
+`66 passed, 2 skipped, 9 deselected`, the same two structural skips as
+before; `forcedirected/tests` `9 passed`. Identical to the baselines
+measured before the move.
+
+**The structure gates were NOT weakened.** They read `fodiwalk.*` import
+targets only, thus a root package was always invisible to them, and the
+`sellcsigma` forwarder of section 23 already relied on that. The silence is
+now NAMED: `ALLOWED_ROOT_PKGS` in
+[`tests/test_structure.py`](../tests/test_structure.py) states which root
+package is allowed and why, and the two size exceptions record that both
+files are forwarders now. No rule was loosened and no test was deleted.
+
+**Adopted at.** 2026-08-26, repository at `89abaf2` plus the uncommitted
+working tree.
+
+**Provenance.**
+[forcedirected/__init__.py](../../forcedirected/__init__.py),
+[forcedirected/force_directed.py](../../forcedirected/force_directed.py),
+[forcedirected/PARITY.md](../../forcedirected/PARITY.md) section 9,
+[core/__init__.py](../core/__init__.py).

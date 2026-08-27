@@ -285,3 +285,107 @@ comparable. Do not quote the `fdlinear` column as a campaign result.
 
 The other five scenarios are untouched: P1 through P4 pass `force="fdlinear"`
 explicitly, and P5 is an augmentation rule with no force law in it.
+
+---
+
+## 8. UPDATE 2026-08-20 -- the god class is SPLIT into stage packages
+
+`fodiwalk/fodiwalk.py` was 698 lines and held four jobs. It is now four
+places, one for each job. [CATALOG.md](CATALOG.md) section 19 holds the
+full entry -- the ten defects, the entities the split adds, and what did
+not change. [REFACTOR.md](REFACTOR.md) is the plan it followed.
+
+### 8.1 What the split BUILT
+
+```
+fodiwalk/
+  config.py       88   Config -- FLAT, public, 39 fields, UNCHANGED
+  model.py       200   class Fodiwalk -- the wiring only
+  augment_graph/       STAGE 2, the policies as module functions
+      result.py         Augmentation, AugmentSpec, take
+      policies.py       POLICIES, WALK_STATS, build, graph_walk
+      policy_walk.py    walk, walk_edges
+      policy_buckets.py policy = buckets on the undirected pairs
+      policy_nbr_walk.py the directed policy
+      merge.py          add_far_pairs, drop_pairs_of
+  embed/               STAGE 3, the ASSEMBLY
+      planes.py         PLANE_BUILDERS, build_planes, ForceSpec, force_params
+      degrees.py        resolve_degrees
+      planner.py        PlanSpec, PlanSet, build_plans
+  tests/
+      golden.py         the byte-exact behaviour gate
+      check_api.py      the public-surface gate
+```
+
+`fodiwalk/fodiwalk.py` and the empty `fodiwalk/models/` are REMOVED. One
+name of `core` changed: the per-epoch kernel `_step` is now `step`, and
+`_step` stays as an alias (defect D6, a cross-module import of a private
+name).
+
+**How the blocks were built.** Every algorithm MOVED, line for line. The
+policy modules carry the body of `_build_D_walk`, `_build_D_buckets` and
+`_build_D_nbr_walk`; `embed/` carries `_plane`, `_build_degrees` and
+`_build_plan`. `merge.py` is the only place where three drifted copies
+became one function, and the three were byte-equal in effect:
+`np.full(2m, w)` holds the same bytes as two `np.full(m, w)`.
+
+### 8.2 What it REPRODUCES
+
+The gates, as they ran on 2026-08-20 after the split landed:
+
+```
+$ .venv/bin/python -m fodiwalk.tests.golden --check
+GOLDEN OK (both)
+
+$ .venv/bin/python -m pytest fodiwalk/tests -q -m "not parity and not big"
+53 passed, 2 skipped, 9 deselected in 80.09s (0:01:20)
+
+$ .venv/bin/python -m fodiwalk.tests.check_api
+[check_api] API OK: 39 Config fields, 13 methods, 17 attributes, 24 keys
+
+$ .venv/bin/python -m pytest fodiwalk/tests/test_contracts.py -k imports -q
+2 passed, 28 deselected in 0.04s
+```
+
+`tests/test_structure.py` landed after that run and it added thirteen
+tests, thus the same command now prints
+`66 passed, 2 skipped, 9 deselected in 72.74s (0:01:12)`. The count of the
+suite moves as the agents add tests; only a FAILURE is a defect.
+
+`GOLDEN OK (both)` is the claim that matters. The AUGMENT half of the gate
+is BYTE EXACT on 16 configurations -- one for every branch of the pair
+policies -- and it hashes `D`, every plane, the degrees, `freq`, three
+`stats` arrays, the `info` counts, the plan statistics, and the state of
+the generator AFTER the stage. The EMBED half compares four short CPU runs
+by numbers at `rtol = 1e-4`.
+
+The 2 skips are `test_policy_equivalence.py` and
+`test_embed_equivalence.py`. Each one compared the new modules against the
+methods of `fodiwalk.py` on the same 16 cases, and each one passed while
+both files existed (17 and 66 tests). They SKIP by an `importorskip` guard
+now that `fodiwalk.py` is gone: they retire with the thing they compared
+against, and `golden.py` carries the property forward.
+
+### 8.3 What it does NOT do
+
+- **It is not a re-verification of the parity gate.** Section 2 stands as
+  the record. The GPU parity gate of section 2 and
+  [CATALOG.md](CATALOG.md) section 12 needs a GPU and about 18 minutes, and
+  the split did not re-run it here. `golden.py` is a CPU proxy: it proves
+  the code MOVE, on one graph and one seed.
+- **It does not measure a new number.** No experiment ran, no policy was
+  added, no law changed. A refactor that moved a number is a defect.
+- **It does not make the whole tree obey G4.** `model.py` is 200 lines and
+  `config.py` is 88, thus the rule holds where the split owns the file.
+  Three PRE-EXISTING files stay above the 300-line limit and the split did
+  not touch them: `tests/test_contracts.py` (468),
+  `core/force_directed.py` (432), `augment_graph/walks.py` (422).
+  `tests/test_structure.py` pins the last two at their measured size and
+  excludes the test files, thus the rule is enforceable as it stands.
+- **It does not repair the two gate COMMANDS that do not measure what they
+  say.** G4 above, and G6, whose pattern needs `sp.csr_matrix((np.concatenate`
+  on ONE line and therefore prints 0 for `merge.py`, which wraps the call.
+  CATALOG.md section 19.10 records both.
+- **`golden.py` covers no `n_split > 0` case**, thus the hub split of
+  CATALOG.md section 15 is outside it, and no `chunk_host` case. It reads
+  Cora at seed 42 only.

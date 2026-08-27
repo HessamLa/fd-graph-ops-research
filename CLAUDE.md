@@ -1,24 +1,61 @@
+All agents and subagents must be informed about this file and read it.
+
 ## Everywhere
 
-Use a concise and precise language with accurate 
-and descriptive words. Use ASD-STE100 style.
+Stay away from over engineering or over-doing. Only deliver what you asked or instructed to do. Add details and other functions ONLY AND ONLY if they help the delivery and if there is a very high chance it is needed. If you want to add extra features, brief the user about it and ask for permission.
+
+Use a concise and precise language with accurate and descriptive words.
+Avoid verbosity. 
+
+Use accurate and descriptive words to generate short but information dense sentenses.
 
 If a ``CLAUDE.md`` file exists in a directory, its directives and instructions will precedes current one when applying to all its files and subdirectories.
+
+Use ``/plain-english`` skill, found at ``~/.claude/skills/plain-english/SKILL.md``.
+
+To obtain date for timestamping, etc, always use the system date program ``date``.
+
+## SKILL
+
+For all large tasks use the ``/agentic-development`` skill. These tasks can be such as coding and monitoring more than a medium sized file, or ingesting and processing a large knowledge base and documents. Define the goal and objectives and have the subagents do it.
+
+For coding and text generation tasks, make sure that you don't generate sloppy outputs. Use ``/unslop`` skill for this.
+
+For design tasks use ``/design-restraint`` skill.
 
 ## Responses
 
 Use ASD-STE100.
 
 Avoid verbose language and lengthy sentences. Keep your responses concise and 
-precise, with accurate and descriptive words.
+precise, with accurate and descriptive words. Generate short but information dense sentenses.
 
-## Codes
+## Coding
 
-Always use short but descriptive names, either in elaborate or 
-minimalistic coding styles.
+Use minimalistic architectures and structures.
+
+Always use short but descriptive information-dense names. Use abbreviations or acronyms only for famous names, for example ``acc`` for ``accuracy``, or ``*_fn`` or ``*_func`` for function names.
 
 When commenting a code, keep the comments concise and precise with accurate 
-and descriptive words. Use ASD-STE100.
+and descriptive words. Create short and information dense sentences.
+
+Use ASD-STE100. 
+
+Use the ``plain-english`` skill for comments and docstrings, not only for 
+messages to the user. A comment says what the code does and why, in words a 
+reader outside this project can follow. Code stays exact: real names, real 
+paths, real error text, real numbers. Prose gets plain words.
+
+Swap the jargon, do not explain it. ``save`` not ``persist``. ``use`` not 
+``leverage``. ``clean up`` not ``refactor``. ``what is public`` not ``API 
+surface``. ``safe to run twice`` not ``idempotent``. ``later step`` not 
+``downstream``.
+
+A term with no short plain word, and that the reader must know, is defined one 
+time in parentheses and then used plainly.
+
+Do not lose accuracy. Simplify the words, not the facts. A comment that records 
+a defect, a threshold or a reason keeps every number and every name.
 
 ## Documentation
 
@@ -28,12 +65,12 @@ The catalog is an incrementing document. Do not remove anything. For update, men
 
 ## Python Environment
 
-This project's virtual environment lives at `.venv/`. 
-Invoke its interpreter directly. Do not run `source .venv/bin/activate` as it does not persist between tool calls.
+This project's virtual environment lives at ``.venv/``. 
+Invoke its interpreter directly. Do not run ``source .venv/bin/activate`` as it does not persist between tool calls.
 
 Use these exact commands:
-- Run a script: `.venv/bin/python script.py`
-- Install a package after granted permission: `.venv/bin/pip install <package>`
-- Run a tool: `.venv/bin/pytest`
+- Run a script: ``.venv/bin/python script.py``
+- Install a package after granted permission: ``.venv/bin/pip install <package>``
+- Run a tool: ``.venv/bin/pytest``
 
-To store large files and artifacts use `/tmp/` for temporary ones, and `data_cache/` for others. These files can be `.npz` and other files. You may use a symlink to link to them locally.
+To store large files and artifacts use ``/tmp/`` for temporary ones, and ``data_cache/`` for others. These files can be ``.npz`` and other files. You may use a symlink to link to them locally.

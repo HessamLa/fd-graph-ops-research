@@ -48,25 +48,32 @@ gates of section 5 measure exactly that.
 
 ## 3. The target tree
 
+**Section 3 is CORRECTED as of 2026-08-21.** M0-M4 built `embed/planes.py`
+and `embed/degrees.py`; the stage boundary then MOVED, and this section now
+describes the tree as it stands, not the tree of the first split. The
+reason, and what M0-M4 actually built before the move, are section 8.
+
 ```
 fodiwalk/
   __init__.py           Fodiwalk, Config              (surface unchanged)
   config.py             Config (FLAT, unchanged fields) + the stage specs
   model.py              class Fodiwalk -- the wiring only. <= 200 lines
   make_graph/           STAGE 1. datasets.py                    unchanged
-  augment_graph/        STAGE 2
+  augment_graph/        STAGE 2 -- the recipe's DATA
       result.py         `Augmentation` -- what stage 2 gives stage 3
       policies.py       `POLICIES` registry, and `build(A, n, spec, rng)`
       policy_walk.py    `walk`, `walk_edges`, the `cap` policy
       policy_buckets.py the `buckets` policy of the undirected pairs
       policy_nbr_walk.py the directed policy, `cap` and `buckets`
       merge.py          `add_far_pairs` -- the ONE far/freq CSR merge
+      planes.py         `PLANE_BUILDERS` registry, `ForceSpec` (moved here
+                        2026-08-21; was `embed/planes.py`)
+      degrees.py        `resolve_degrees` (moved here 2026-08-21; was
+                        `embed/degrees.py`)
       walks.py pairs.py weights.py buckets.py far_pairs.py landmarks.py
                                                               unchanged
-  embed/                STAGE 3, the assembly
-      planes.py         `PLANE_BUILDERS` registry (was `Fodiwalk._plane`)
-      degrees.py        `resolve_degrees` (was `Fodiwalk._build_degrees`)
-      planner.py        `build_plans` -> `PlanSet` (was `_build_plan`)
+  embed/                STAGE 3 -- CONSUMPTION ONLY
+      planner.py         `build_plans` -> `PlanSet`, `PlanSpec`
   core/                 the engine, the kernel, the laws, the asserter
                                                               unchanged
   misc/                 optim, drop, evaluation               unchanged
@@ -81,15 +88,24 @@ fodiwalk/
 ```
 core        <- imports core only.               (unchanged rule)
 make_graph  <- numpy, scipy.
-augment_graph <- numpy, scipy. It imports NO core, NO embed, NO model.
-embed       <- core. It imports NO augment_graph, NO model.
+augment_graph <- numpy, scipy, core (the plane/degree contract). No embed,
+              no model. (WIDENED 2026-08-21: `planes.py` reads
+              `core.forces.planes_of`/`fuse`, `core.plan_contract`.)
+embed       <- core only. It imports NO augment_graph, NO model.
 model.py    <- config, make_graph, augment_graph, embed, core, misc.
 ```
 
 `core` must NOT learn about `Config`. That is why the plane, degree and
-plan assembly go to `embed/` and not to `core/`.
+force-param builders live in `augment_graph/`, and the plan/kernel
+assembly in `embed/`, and neither lives in `core/`.
 
 ### 3.1 `Augmentation` -- the seam of stage 2 to stage 3
+
+**Widened 2026-08-21** with `planes`, `degrees` and `params`: they are
+stage-2 output (data-preparation of the recipe), not stage-3 state, thus
+the seam object names them even though a policy's own `build()` cannot
+fill them (it does not know the law) -- `Fodiwalk.augment_graph` fills
+them once the law is known, still calling `augment_graph` code.
 
 ```python
 @dataclasses.dataclass
@@ -98,6 +114,9 @@ class Augmentation:
     freq: np.ndarray | None # (nnz,), aligned to D.indices, or None
     stats: dict             # the walk statistics, and `freq` as a CSR
     info: dict              # the counts and the timings a log prints
+    planes: tuple | None = None      # filled after `build`, once law is known
+    degrees: np.ndarray | None = None
+    params: dict | None = None
 ```
 
 ### 3.2 The stage specs -- a narrow config for each category
@@ -112,11 +131,13 @@ AugmentSpec.from_config(cfg)   # pairs, policy, walks, walk_len, window,
                                # cap, row_cap, p, q, edge_rule, weight,
                                # freq_mode, far*, bucket*, landmarks,
                                # prune_*
-PlanSpec.from_config(cfg)      # b_cells, k_max, ladder_base, chunks,
-                               # chunk_host, check_planes, check_padding
 ForceSpec.from_config(cfg)     # force, fuse_planes, k1, k4, kr,
                                # fdlinear_sign, no_deg_norm, deg_source,
                                # random_drop_rate, drop_strategy
+                               # -- stage 2 since 2026-08-21; `augment_graph.planes`
+PlanSpec.from_config(cfg)      # b_cells, k_max, ladder_base, chunks,
+                               # chunk_host, check_planes, check_padding
+                               # -- stage 3; `embed.planner`
 ```
 
 ---
@@ -159,7 +180,16 @@ exception. Sources: `CATALOG.md`, and the session that ran the campaign.
     that `near` holds in EITHER direction, AFTER `sample_far_pairs` has
     drawn. `directed=True` inside the sampler gives the same property and
     OTHER pairs, thus it breaks parity. `CATALOG.md` 8.2.
-11. **`Z` on the GPU is not bit-reproducible when `n_split > 0`**
+11. **A stage split must not make a SECOND generator.** One
+    `np.random.default_rng(seed)` flows walks -> far pairs -> link
+    prediction -> hop sample. A second one, or a moved call, changes every
+    recorded number. This is trap 2 seen from the other side: it is the
+    failure mode a refactor produces, and not the one a rewrite produces.
+12. **`embed()` calls `augment_graph()` itself.** A new module that calls
+    it AGAIN to time the stage makes the run embed a `D` that is not the
+    `D` it reports, and `D.nnz` still agrees, because the pair counts are
+    stable. Time the stage with a `train_begin` callback.
+13. **`Z` on the GPU is not bit-reproducible when `n_split > 0`**
     (`CATALOG.md` 15). The golden gate therefore hashes the augmentation,
     which is pure NumPy and exact, and compares the embedding by numbers
     with `rtol = 1e-4` on the CPU backend.
@@ -174,7 +204,7 @@ master re-runs it.
 | id | gate | command | pass |
 | --- | --- | --- | --- |
 | G1 | behaviour | `.venv/bin/python -m fodiwalk.tests.golden --check` | `GOLDEN OK (both)`. The augment half is BYTE EXACT |
-| G2 | the suite | `.venv/bin/python -m pytest fodiwalk/tests -q -m "not parity and not big"` | `53 passed`, and NO existing test file is edited |
+| G2 | the suite | `.venv/bin/python -m pytest fodiwalk/tests -q -m "not parity and not big"` | NO failure and NO error, and no EXISTING test file is edited. The count moves as the agents add tests: 52 before, 136 after M1. M2 deletes `fodiwalk.py`, thus the two equivalence tests SKIP by their `importorskip` guard -- that is correct, and they retire with the thing they compared against |
 | G3 | the surface | `.venv/bin/python -m fodiwalk.tests.check_api` | every name of section 5.1 exists and behaves |
 | G4 | the size | `wc -l` over `fodiwalk/**/*.py` | no module > 300 lines except `core/sell_c_sigma.py`; `model.py` <= 200 |
 | G5 | no dispatch chain | `grep -n '"walk"\|"nbr_walk"\|"buckets"\|"fdlinear"' fodiwalk/model.py` | no hit outside a docstring |
@@ -187,7 +217,8 @@ master re-runs it.
 ### 5.1 The public surface, which G3 checks
 
 - `from fodiwalk import Fodiwalk, Config`
-- The field names of `Config`: the 41 of today, spelled the same.
+- The field names of `Config`: the 39 of today, spelled the same, with
+  the same default values. `tests/check_api.py` holds them literally.
 - `Fodiwalk(n_dim=, lr=, seed=, verbosity=, optim=, lr_decay=, eta=,
   sgd_frac=, sqn_memory=, **cfg)`; an unknown name raises `TypeError`.
 - The methods: `make_graph`, `graph_walk`, `set_D`, `augment_graph`,
@@ -199,7 +230,11 @@ master re-runs it.
 - `Fodiwalk._build_planes(D)` and `Fodiwalk._build_degrees(D, A)` stay
   callable: `tests/golden.py` calls both. They may become thin wrappers of
   `embed/`.
-- The keys of `info` and of `plan_stats` do not change.
+- The keys of `info`, of `plan_stats` and of `stats` are a SUBSET rule: a
+  lost key fails, a new key passes. A lost key breaks a log or a `RESULT`
+  line; a stage split may legitimately add one. `stats` is surface in
+  practice -- `tests/golden.py` and `experiments/fodiwalk/bench_fodiwalk.py`
+  read `stats["key"]` and `stats["mn"]` to build the hop-gap CSR.
 
 ---
 
@@ -230,3 +265,73 @@ whether the wiring is right.
   the import lines of `experiments/fodiwalk/*.py` if a name moves.
 - Performance. A refactor that gets faster is fine; a refactor that changes
   a number to get faster is a defect.
+
+---
+
+## 8. UPDATE 2026-08-21 -- the stage boundary moves
+
+**M0-M4 built `embed/planes.py` and `embed/degrees.py`.** That build is
+correct and is what sections 1-7 above describe as delivered; this entry
+records what changed AFTER it, and why. Nothing in sections 1-7 was wrong
+at the time; the module specification `dev-docs/fodiwalk-module.md` was
+then sharpened, and the tree follows.
+
+**Reason for the update.** `dev-docs/fodiwalk-module.md` gained one
+sentence: "This stage [embedding] shall not do any graph analysis or data
+preparation. It must only consume the data. Its main goal is to apply the
+force function on the input data using the best implementation to optimize
+resource utilization." A plane, a degree and a force param are each a
+choice made about DATA -- which values a law needs, which row freezes
+without an explicit degree, which scalar a law reads -- and that choice is
+a property of the RECIPE (one pair policy plus one force law), not of the
+kernel that later applies it. Building them in `embed/` put data
+preparation in the consumption stage.
+
+**What moved.** `embed/planes.py` -> `augment_graph/planes.py`
+(`ForceSpec`, `PLANE_BUILDERS`, `build_planes`, `force_params`).
+`embed/degrees.py` -> `augment_graph/degrees.py` (`resolve_degrees`). No
+line of a function body changed; only the module and the import lines
+that reach `core.forces`/`core.plan_contract` moved with them.
+
+**What widened.** `augment_graph.result.Augmentation` gained `planes`,
+`degrees` and `params` (section 3.1). `augment_graph`'s allowed imports
+gained `core` (section 3), because the moved code reads
+`core.forces.planes_of`/`fuse` and `core.plan_contract.PLANE_CHECKS` to
+know a law's plane contract -- knowing the contract is itself part of
+preparing that law's data. `embed/` now imports `core` for the kernel and
+the plan alone (`make_plan`, `step`, `plan_contract.check_plan`), and
+builds no plane and resolves no degree.
+
+**What did not move.** `embed/planner.py` (`PlanSpec`, `PlanSet`,
+`build_plans`, the `jax.jit`/`device_put` plumbing): the plan and the
+jitted step are consumption, not preparation, and stay stage 3.
+
+**What did NOT change.** The physics, the numbers, `Config`'s 39 fields,
+the public surface of `Fodiwalk` (`tests/check_api.py` still reports
+`API OK`), and `_build_planes`/`_build_degrees` as callable model methods.
+The golden gate (`tests/golden.py`) is BYTE EXACT across the move.
+
+**The RECIPE, named.** One augmentation policy plus one force law, plus
+the data they exchange, is a RECIPE. Baseline Fodiwalk's recipe is
+`nbr_walk`/`walk`/`walk_edges` pairs feeding `fdlinear`'s planes
+`(h, freq)`, or `fdlinear_fused`'s single plane `(w,)`. A different
+augmentation and a different law are a different recipe with a different
+data set; `augment_graph` is where a recipe is assembled end to end, and
+`embed` is the one engine every recipe shares. `dev-docs/CATALOG.md` holds
+the full entry.
+
+**Gates re-run after the move**: G1 (`GOLDEN OK (both)`), G2 (`66 passed,
+2 skipped`), G3 (`check_api` OK), G4-G8 (`test_structure.py`, 13 passed,
+with `test_augment_graph_imports_no_embed_no_model` widened to allow
+`core`). Two negative controls, run against scratch copies and not the
+live tree: an `embed -> augment_graph` import still fails
+`test_embed_imports_only_core_no_augment_graph_no_model`, naming the file.
+
+**Adopted at.** The fodiwalk package immediately after M4 (commit that
+lands the M0-M4 split), same session.
+
+**Provenance.** [augment_graph/planes.py](../augment_graph/planes.py),
+[augment_graph/degrees.py](../augment_graph/degrees.py),
+[augment_graph/result.py](../augment_graph/result.py),
+[embed/planner.py](../embed/planner.py), [model.py](../model.py),
+[dev-docs/fodiwalk-module.md](fodiwalk-module.md).
