@@ -24,7 +24,8 @@ H5 says that it will cost quality.
 # Provenance: moved VERBATIM from `fodiwalk/misc/optim.py` on 2026-08-26,
 # with the engine that dispatches through it: `ForceDirected.set_rule` is
 # at the repository root now and a relative import cannot reach `fodiwalk`.
-# `fodiwalk/misc/optim.py` is a forwarder and re-exports these very objects.
+# `fodiwalk/misc/optim.py` was a forwarder and is deleted (2026-08-27).
+# `fodiwalk.misc` still re-exports RULES and STATE_ARRAYS from here.
 # Provenance: moved from `experiments/fdwalk/optim.py` on 2026-08-19.
 # Verbatim: not one line of a body changed.
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""fodiwalk.embed -- STAGE 3, CONSUMPTION ONLY. The engine itself is `core`.
+"""fodiwalk.embed -- STAGE 3, CONSUMPTION ONLY. The engine is `forcedirected`.
 
 `dev-docs/fodiwalk-module.md`: "This stage shall not do any graph analysis
 or data preparation. It must only consume the data. Its main goal is to
@@ -7,7 +7,7 @@ optimize resource utilization."
 
 Stage 3 takes what stage 2 already prepared -- the matrix `D`, its PLANES,
 the DEGREE divisor and the force PARAMS -- and turns them into the batch
-PLAN and the jitted kernel steps that `core.sell_c_sigma` runs. It builds
+PLAN and the jitted kernel steps that `forcedirected` runs. It builds
 NO plane and resolves NO degree: `augment_graph.planes.build_planes` and
 `augment_graph.degrees.resolve_degrees` do that, because a plane and a
 degree are properties of the RECIPE (the pair policy plus the force law),

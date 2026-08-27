@@ -93,7 +93,7 @@ class ForceSpec:
 
 
 def force_params(spec: ForceSpec) -> dict:
-    """The traced scalars the law reads. `params` of `core.sell_c_sigma.step`.
+    """The traced scalars the law reads. `params` of `forcedirected.step`.
 
     The kernel only APPLIES these; it never chooses them. Choosing them is
     part of the recipe, thus this stays beside `build_planes` and not in

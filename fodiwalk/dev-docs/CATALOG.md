@@ -2103,3 +2103,91 @@ working tree.
 [forcedirected/force_directed.py](../../forcedirected/force_directed.py),
 [forcedirected/PARITY.md](../../forcedirected/PARITY.md) section 9,
 [core/__init__.py](../core/__init__.py).
+
+---
+
+## 25. UPDATE 2026-08-27 -- the four forwarders are DELETED; `fodiwalk` reads `forcedirected` directly
+
+**Reason for the update.** Section 24 left four logic-free modules in
+`fodiwalk` -- `core/force_directed.py`, `core/sell_c_sigma.py`,
+`core/csr.py`, `misc/optim.py` -- so that no caller had to change on the day
+the engine moved. That was the right call for the move and the wrong shape
+to keep. A forwarder is a SECOND NAME for one thing: a reader who opens
+`fodiwalk/core/sell_c_sigma.py` to find the kernel finds an empty file and a
+pointer, and must open a second file to learn there was never anything in
+the first. The move is done, thus the scaffolding goes.
+
+**What changed.** Every importer names `forcedirected` now:
+
+| file | was | is |
+| --- | --- | --- |
+| [`base.py`](../base.py) | `from .core.force_directed import ForceDirected` | `from forcedirected import ForceDirected` |
+| [`model.py`](../model.py) | `from .core.force_directed import ForceDirected` | `from forcedirected import ForceDirected` |
+| [`core/forces.py`](../core/forces.py) | `from .csr import row_of` | `from forcedirected import row_of` |
+| [`core/__init__.py`](../core/__init__.py) | three `from .<forwarder> import ...` | one `from forcedirected import ...` |
+| [`misc/__init__.py`](../misc/__init__.py) | `from .optim import RULES, ...` | `from forcedirected import RULES, ...` |
+| [`embed/planner.py`](../embed/planner.py) | `from ..core.sell_c_sigma import make_plan, step` | `from forcedirected import make_plan, step` |
+
+Then the four files were deleted. `experiments/fodiwalk/bench_fodiwalk.py`
+and two test modules followed the one name that had no other route,
+`optim`: `from fodiwalk.misc import optim` is now
+`from forcedirected import optim`.
+
+**WHAT STILL WORKS, and what does not.** A NAME that `core/__init__.py` or
+`misc/__init__.py` re-exports is untouched: `from fodiwalk.core import
+ForceDirected, make_plan, step, row_of` and `from fodiwalk.misc import
+RULES, state_arrays` all resolve exactly as before. A MODULE PATH into a
+deleted file does not: `fodiwalk.core.sell_c_sigma`, `fodiwalk.core.csr`,
+`fodiwalk.core.force_directed` and `fodiwalk.misc.optim` are gone, and an
+import of one raises `ModuleNotFoundError` instead of resolving in silence.
+That is the intent -- one route to the engine, and it is named.
+
+`core/` keeps its own physics and nothing else: `forces.py` (the force
+laws) and `plan_contract.py` (the asserter of the plane contract). Neither
+was ever a forwarder.
+
+**THE IMPORT RULE IS UNCHANGED, and it is now checked.** `forcedirected`
+imports numpy, scipy, jax and its own modules, and NOTHING of this
+repository; `fodined` and `fodiwalk` both read it and neither reads the
+other. Before this update the rule had NO gate of its own -- the closest
+thing was `test_b1_csr_imports_nothing_of_the_package`, which read the
+`fodiwalk` forwarder and would have been deleted with it. It became
+[`test_b1_engine_package_imports_nothing_of_this_repository`](../tests/test_contracts.py):
+same criterion B1.2, widened from one file to every module of
+`forcedirected/`, and it reads the repository root from the FILESYSTEM, thus
+a package added tomorrow is judged too. `forcedirected/tests/` is excluded,
+because `m1_old_vs_new.py` names both callers on purpose.
+
+**`test_structure.py` was not weakened.** `ALLOWED_ROOT_PKGS` and
+`test_fodiwalk_imports_no_root_package_but_the_engine` are unchanged; only
+the comments that described the forwarders were corrected. The two
+`SIZE_EXCEPTIONS` entries for `core/sell_c_sigma.py` (558) and
+`core/force_directed.py` (421) were REMOVED with the files they pinned: a
+cap on a file that does not exist asserts nothing. `augment_graph/walks.py`
+(422) is the one exception left.
+
+**One dead record was repointed.**
+[`forcedirected/tests/m1_old_vs_new.py`](../../forcedirected/tests/m1_old_vs_new.py)
+loaded `fodiwalk.core.sell_c_sigma` by name. Its window closed 2026-08-25
+(its own docstring says the comparison becomes a module against itself), no
+module imports it and pytest does not collect it, thus the line now names
+`forcedirected.sell_c_sigma` with a comment saying why. A record that
+crashes on import is worse than a record that repeats itself.
+
+**The gates.** No number changed, and that was the requirement.
+`A/B OK -- every score matches side A` on all four cases;
+`GOLDEN OK (both)`; `API OK: 39 Config fields, 12 methods, 17 attributes,
+24 keys`; `pytest fodiwalk/tests forcedirected/tests -m "not big"` gives
+`82 passed, 2 skipped, 3 deselected`, the same as the baseline measured
+before the change; and `fodined.embedding.sell_c_sigma.make_plan` still
+resolves -- `fodined` reaches the same kernel through its own forwarder,
+which was NOT touched and must never import `fodiwalk`.
+
+**Adopted at.** 2026-08-27, repository at `89abaf2` plus the uncommitted
+working tree.
+
+**Provenance.** [core/__init__.py](../core/__init__.py),
+[misc/__init__.py](../misc/__init__.py), [base.py](../base.py),
+[embed/planner.py](../embed/planner.py),
+[tests/test_contracts.py](../tests/test_contracts.py),
+[tests/test_structure.py](../tests/test_structure.py).

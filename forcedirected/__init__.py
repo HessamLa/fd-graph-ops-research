@@ -38,12 +38,13 @@ Created 2026-08-26, from three moves that all landed here:
 
   * `fodiwalk/core/force_directed.py` -- the engine, and the class is
     `ForceDirected` again (it was `ForceDirectedEmbedding` from
-    2026-08-21). The old path is a forwarder and holds NO alias.
+    2026-08-21). That path was a forwarder and is DELETED (2026-08-27);
+    `fodiwalk` imports this package directly.
   * `sellcsigma/` -- the root package made 2026-08-25 for the kernel,
     ABSORBED here byte for byte. A separate package for one kernel that
     only `ForceDirected` calls was overkill. `PARITY.md` came with it.
   * `fodiwalk/core/csr.py` and `fodiwalk/misc/optim.py` -- the two modules
-    the engine reads. Both old paths are forwarders.
+    the engine reads. Both old paths are DELETED (2026-08-27).
 """
 from __future__ import annotations
 

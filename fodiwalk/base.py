@@ -1,6 +1,6 @@
 """fodiwalk.base -- `Fodiwalk_base`, the contract of the Fodiwalk family.
 
-`core.ForceDirected` is a pure engine: give it `D`, it relaxes
+`forcedirected.ForceDirected` is a pure engine: give it `D`, it relaxes
 `Z` against it. This class is the layer above -- the PIPELINE contract
 every Fodiwalk-family model must satisfy to go from raw data to an
 embedding: `make_graph` (stage 1), `graph_walk` and `augment_graph` (stage
@@ -19,12 +19,13 @@ this project, and a `fit` that chained it into `embed` promised a stage
 that was never real. `dev-docs/CATALOG.md`, the section on the class
 split, records the reason.
 
-Import discipline: `core` only. `core.force_directed` is a FORWARDER
-since 2026-08-26; the engine itself is the root package `forcedirected`.
+Import discipline: `forcedirected` only -- the root package that holds
+the engine. `fodined` reads the same package, thus neither of the two
+depends on the other.
 """
 from __future__ import annotations
 
-from .core.force_directed import ForceDirected
+from forcedirected import ForceDirected
 
 
 class Fodiwalk_base(ForceDirected):

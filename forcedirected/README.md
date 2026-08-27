@@ -43,9 +43,12 @@ class MyModel(ForceDirected):
 
 ## Callers
 
-`fodiwalk/core/{force_directed,sell_c_sigma,csr}.py` and
-`fodiwalk/misc/optim.py` and `fodined/embedding/sell_c_sigma.py` are
-FORWARDERS. They hold no algorithm. Edit the code here.
+`fodiwalk` imports this package directly. Its four pass-through files
+were deleted on 2026-08-27, once every caller pointed here.
+
+`fodined/embedding/sell_c_sigma.py` is still a FORWARDER: it holds no
+algorithm and re-exports the kernel from here, so `fodined` keeps its
+import path and does NOT depend on `fodiwalk`. Edit the code here.
 
 ## Tests
 

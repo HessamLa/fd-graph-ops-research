@@ -29,16 +29,17 @@ KNOWN_STAGE_PKGS = {"core", "augment_graph", "embed", "make_graph", "misc"}
 
 # The ROOT packages a module of `fodiwalk` MAY import. `forcedirected` holds
 # the engine `ForceDirected`, the SELL-C-sigma kernel, the CSR helpers and
-# the update rules, for this package and for `fodined` alike; `core`'s
-# `force_directed.py`, `sell_c_sigma.py` and `csr.py` and `misc`'s `optim.py`
-# are FORWARDERS to it since 2026-08-26. It is ALLOWED, and it is allowed for
-# one reason: `forcedirected` imports numpy, scipy, jax and its own modules
-# and NOTHING of this repository, thus every dependency points AT it and a
-# cycle is impossible. `_external_targets` therefore judges `fodiwalk.*`
-# targets only, and `test_fodiwalk_imports_no_root_package_but_the_engine`
-# below is what makes this set a RULE and not a note: without it the name
-# would document an intent that nothing enforces, and `fodiwalk` could
-# import `evaluator` or `fodined` with every gate still green.
+# the update rules, for this package and for `fodined` alike; `fodiwalk`
+# imports them from it DIRECTLY since 2026-08-27 (four forwarder modules of
+# `core` and `misc` carried the names from 2026-08-26 and were deleted). It
+# is ALLOWED, and it is allowed for one reason: `forcedirected` imports
+# numpy, scipy, jax and its own modules and NOTHING of this repository, thus
+# every dependency points AT it and a cycle is impossible.
+# `_external_targets` therefore judges `fodiwalk.*` targets only, and
+# `test_fodiwalk_imports_no_root_package_but_the_engine` below is what makes
+# this set a RULE and not a note: without it the name would document an
+# intent that nothing enforces, and `fodiwalk` could import `evaluator` or
+# `fodined` with every gate still green.
 ALLOWED_ROOT_PKGS = {"forcedirected"}
 
 
@@ -116,9 +117,8 @@ def test_core_imports_no_embed(root: pathlib.Path = PKG):
     or the one-way dependency of REFACTOR.md section 3 becomes a cycle.
 
     `core` reaching `forcedirected` is NOT such a leak, and this gate stays
-    silent on it by design (`ALLOWED_ROOT_PKGS`): three modules of `core`
-    are forwarders to that root package, which reads nothing of this
-    repository."""
+    silent on it by design (`ALLOWED_ROOT_PKGS`): that root package holds
+    the engine and reads nothing of this repository."""
     for path in sorted((root / "core").glob("*.py")):
         bad = _external_targets(path, "core") & {"embed"}
         assert not bad, f"{path.relative_to(root)} imports embed"
@@ -162,11 +162,11 @@ def test_no_module_imports_a_private_name_of_another_module(
         root: pathlib.Path = PKG):
     """D6 was `from .core.sell_c_sigma import make_plan, _step`: the god
     class reached a private helper of another module. The split renamed it
-    to `step`, kept `_step` only as a same-package alias that a package's
-    own `__init__.py` may re-export as part of its declared surface (that
-    is `core/__init__.py` today, and is why `__init__.py` is excluded
-    below) -- a PLAIN module reaching into another module's private name is
-    the defect, and it stays forbidden everywhere else."""
+    to `step` and kept `_step` only as an alias that a package's own
+    `__init__.py` may re-export as part of its declared surface (that is
+    `core/__init__.py` today, and is why `__init__.py` is excluded below)
+    -- a PLAIN module reaching into another module's private name is the
+    defect, and it stays forbidden everywhere else."""
     for path in sorted(root.rglob("*.py")):
         if path.name == "__init__.py":
             continue
@@ -220,27 +220,13 @@ def test_model_holds_no_compare_against_a_policy_or_law_literal(
 # excluded outright rather than exempted by name.
 MAX_LINES = 300
 MODEL_MAX_LINES = 200
+# `core/sell_c_sigma.py` (558) and `core/force_directed.py` (421) were the
+# other two entries. The kernel moved to `forcedirected/` 2026-08-25..26 and
+# the engine with it; both files stayed as forwarders and 2026-08-27 deleted
+# them. A cap on a file that no longer exists says nothing, thus the two
+# entries GO with the files. `forcedirected/` is not judged here: this gate
+# reads `fodiwalk` only.
 SIZE_EXCEPTIONS = {
-    "core/sell_c_sigma.py": 558,     # the kernel and the layout.
-                                     # 2026-08-25: the algorithm moved to
-                                     # the `sellcsigma` package and this
-                                     # file is a FORWARDER. 2026-08-26:
-                                     # that package was ABSORBED into
-                                     # `forcedirected` and the forwarder
-                                     # points there. The entry is KEPT,
-                                     # not removed: the cap is a maximum,
-                                     # thus a forwarder passes it.
-                                     # Lowering it to the 300 default is a
-                                     # separate decision -- see CATALOG
-                                     # section 23.
-    "core/force_directed.py": 421,   # the engine and the epoch loop
-                                     # (was 432; shrank when make_graph,
-                                     # augment_graph and fit left the
-                                     # class 2026-08-21, see CATALOG).
-                                     # 2026-08-26: the engine moved to
-                                     # `forcedirected/` and this file is a
-                                     # FORWARDER too -- same reasoning as
-                                     # above, thus the entry stays
     "augment_graph/walks.py": 422,   # the walks
 }
 

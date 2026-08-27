@@ -83,7 +83,7 @@ from fodiwalk.core import Callback_Base
 from fodiwalk.core.forces import planes_of
 from fodiwalk.augment_graph import pairs as PR
 from fodiwalk.make_graph import load
-from fodiwalk.misc import optim as optimizers
+from forcedirected import optim as optimizers
 from fodiwalk.misc.evaluation import link_prediction, hop_sample, task_hop
 
 

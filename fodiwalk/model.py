@@ -30,10 +30,11 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from forcedirected import ForceDirected
+
 from .base import Fodiwalk_base
 from .config import Config
 from .core import plan_contract
-from .core.force_directed import ForceDirected
 from .core.forces import force_fn
 from .misc.drop import drop_steady_rate
 from .augment_graph import (policies, AugmentSpec, ForceSpec, build_planes,

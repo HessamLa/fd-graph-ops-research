@@ -38,7 +38,11 @@ from fodined.embedding.shell_force import (shell_coeff_data, degrees_from_D,
 from fodiwalk.make_graph.datasets import read_edges, to_csr
 
 OLD_FODINED = importlib.import_module("fodined.embedding.sell_c_sigma")
-OLD_FODIWALK = importlib.import_module("fodiwalk.core.sell_c_sigma")
+# `fodiwalk.core.sell_c_sigma` was the forwarder that carried this name;
+# it was DELETED 2026-08-27. The window this script measures closed
+# 2026-08-25, thus this leg now compares the shared module against
+# itself, exactly as the docstring above says it would.
+OLD_FODIWALK = importlib.import_module("forcedirected.sell_c_sigma")
 NEW = importlib.import_module("forcedirected.sell_c_sigma")
 
 PARAMS = dict(k1=0.999, k2=1.0, k3=10.0, k4=0.01, h_shift=1.0)

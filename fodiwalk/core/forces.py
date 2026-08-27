@@ -4,8 +4,8 @@ Everything that defines the physics is here and nowhere else: the laws, the
 planes they read, and the registry that says which is which.
 
 WHY THIS FILE IS IN `core` AND NOT IN `misc`. The law and the plan are ONE
-contract and not two components. `sell_c_sigma.make_plan` takes a SEQUENCE
-of planes, and `_step` gives that sequence to `force_fn`, which unpacks it
+contract and not two components. `forcedirected.make_plan` takes a SEQUENCE
+of planes, and `step` gives that sequence to `force_fn`, which unpacks it
 POSITIONALLY:
 
     h, freq = planes                   # fdlinear
@@ -40,8 +40,8 @@ Provenance, verbatim moves:
     `experiments/fdwalk/force_fdlinear.py`.
 Only the imports and this docstring are new. No line of a body changed.
 
-Import discipline: numpy, scipy.sparse, jax, and `core.csr`. Nothing else
-of the package.
+Import discipline: numpy, scipy.sparse, jax, and `forcedirected` for
+`row_of`. Nothing else of the package.
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ import numpy as np
 import scipy.sparse as sp
 import jax.numpy as jnp
 
-from .csr import row_of
+from forcedirected import row_of
 
 
 # ---------------------------------------------------------------------------

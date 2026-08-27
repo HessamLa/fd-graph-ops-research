@@ -20,7 +20,8 @@ densifying, and direct ``.indptr`` / ``.indices`` / ``.data`` access for
 provide any of that.
 """
 # Provenance: moved VERBATIM from `fodiwalk/core/csr.py` on 2026-08-26,
-# with the engine that reads it. `fodiwalk/core/csr.py` is a forwarder now.
+# with the engine that reads it. `fodiwalk/core/csr.py` was a forwarder and
+# is deleted (2026-08-27); callers import this module.
 # Provenance: moved VERBATIM from `fodined/core/csr.py` on 2026-08-19.
 # Not one line of a body changed; the file has no import to change either.
 # Provenance: this file is a copy of `fdge_jax_sell_c_sigma/core/csr.py`.

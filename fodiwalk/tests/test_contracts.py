@@ -13,13 +13,14 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from fodiwalk.core import csr, forces, plan_contract, sell_c_sigma
+from forcedirected import csr, sell_c_sigma
+from fodiwalk.core import forces, plan_contract
 from fodiwalk.core.plan_contract import PlaneContractError
 from fodiwalk.augment_graph import pairs as PR
 from fodiwalk.augment_graph import walks as W
 from fodiwalk.augment_graph import weights as WT
 from fodiwalk.augment_graph.far_pairs import sample_far_pairs
-from fodiwalk.misc import optim
+from forcedirected import optim
 
 HERE = pathlib.Path(__file__).resolve().parent
 PKG = HERE.parent
@@ -38,7 +39,7 @@ def _random_csr(rng, n, density, empty_rows=0):
 
 
 # ===========================================================================
-# B1 -- core/csr.py
+# B1 -- the CSR helpers, `forcedirected/csr.py`
 # ===========================================================================
 def test_b1_row_of_matches_repeat_on_20_random_csrs():
     """B1.1. Also on matrices that hold empty rows."""
@@ -54,29 +55,45 @@ def test_b1_row_of_matches_repeat_on_20_random_csrs():
     assert csr.row_of(E.indptr).size == 0
 
 
-def test_b1_csr_imports_nothing_of_the_package():
-    """B1.2. `core/csr.py` is the bottom of the tree.
+def test_b1_engine_package_imports_nothing_of_this_repository():
+    """B1.2. `csr.py` is the bottom of the tree, and `forcedirected/` is
+    the bottom of the repository.
 
-    A FORWARDER since 2026-08-26 -- `row_of` and `n_rows` moved to
-    `forcedirected/csr.py` with the engine that reads them -- and the
-    contract is unchanged: it still imports nothing of `fodiwalk`."""
-    tree = ast.parse((PKG / "core" / "csr.py").read_text())
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            assert node.level == 0 and not (node.module or "").startswith(
-                "fodiwalk"), f"csr.py imports {node.module!r}"
-        if isinstance(node, ast.Import):
-            for a in node.names:
-                assert not a.name.startswith("fodiwalk")
+    `row_of` and `n_rows` moved to `forcedirected/csr.py` 2026-08-26 with
+    the engine that reads them, and `fodiwalk/core/csr.py` stayed as a
+    forwarder until 2026-08-27. The contract widened with the move: EVERY
+    module of `forcedirected` imports numpy, scipy, jax and its own
+    modules, and no package of this repository. That is what lets `fodined`
+    and `fodiwalk` share the engine without either depending on the other.
+
+    `tests/` is excluded: `m1_old_vs_new.py` is a closed record that names
+    both callers on purpose, and the rule is about the package."""
+    repo = PKG.parent
+    pkgs = {d.name for d in repo.iterdir()
+            if d.is_dir() and ((d / "__init__.py").exists()
+                               or any(d.glob("*.py")))} - {"forcedirected"}
+    for path in sorted((repo / "forcedirected").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                assert node.level == 0 or not (node.module or "").startswith(
+                    ".."), f"{path.name} imports above its own package"
+                if node.level == 0 and node.module:
+                    names = [node.module]
+            for name in names:
+                assert name.split(".")[0] not in pkgs, (
+                    f"forcedirected/{path.name} imports {name!r}, a package "
+                    f"of this repository")
 
 
 def test_core_imports_only_core():
     """The risk of section 9: `core` must import no other stage, at module
-    level. Since 2026-08-26 three modules of `core` are forwarders to the
-    ROOT package `forcedirected`, which is no stage of `fodiwalk` and reads
-    nothing of this repository; the engine's function-local `optim` import
-    went there with it. The one-way rule is unchanged, and it is what this
-    gate keeps."""
+    level. `core` reaches the ROOT package `forcedirected` for the engine,
+    the kernel and the CSR helpers; that is no stage of `fodiwalk` and it
+    reads nothing of this repository, thus the one-way rule is unchanged,
+    and it is what this gate keeps."""
     for path in sorted((PKG / "core").glob("*.py")):
         tree = ast.parse(path.read_text())
         for node in tree.body:                       # module level only
@@ -93,7 +110,7 @@ def test_core_imports_only_core():
 
 
 # ===========================================================================
-# B2 -- core/sell_c_sigma.py, and the plane contract
+# B2 -- the kernel, `forcedirected/sell_c_sigma.py`, and the plane contract
 # ===========================================================================
 def test_b2_make_plan_raises_on_a_wrong_plane_shape(tiny):
     """B2.1."""

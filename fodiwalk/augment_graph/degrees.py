@@ -1,7 +1,7 @@
 """augment_graph.degrees -- the divisor of the row sum. THREE sources, an
 order.
 
-`core.sell_c_sigma.make_plan` turns this array into `inv_deg_ext`, and the
+`forcedirected.make_plan` turns this array into `inv_deg_ext`, and the
 kernel multiplies every row of `dZ` by it. A degree of 0 becomes 0.0 and it
 zeroes the WHOLE force of the row -- the repulsion too. The row then never
 moves, for the whole run, and nothing raises (trap 4 of

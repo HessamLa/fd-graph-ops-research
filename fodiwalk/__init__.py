@@ -12,12 +12,12 @@
 The tree, and the one-way dependency between the stages::
 
     config.py        class Config -- every knob, FLAT
-    core/            csr, force_directed (ForceDirected, the pure
-                     engine), sell_c_sigma, forces, plan_contract
-                     `force_directed`, `sell_c_sigma` and `csr` are
-                     FORWARDERS since 2026-08-26: the engine, the kernel
-                     and the helpers live in the root package
+    core/            forces, plan_contract -- the PHYSICS of this
+                     package. The engine `ForceDirected`, the
+                     SELL-C-sigma kernel and the CSR helpers are NOT
+                     here: they live in the root package
                      `forcedirected`, which `fodined` reads too.
+                     `core/__init__.py` re-exports their names.
                      CATALOG section 23.
     base.py          class Fodiwalk_base -- the pipeline contract: the
                      stage hooks a concrete model implements

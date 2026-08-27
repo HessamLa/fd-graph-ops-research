@@ -3,7 +3,7 @@
 THIS IS THE ONLY NEW MODULE OF THE PACKAGE, and it is the reason the
 refactor pays.
 
-`make_plan` takes a SEQUENCE of planes and `_step` gives that sequence to
+`make_plan` takes a SEQUENCE of planes and `step` gives that sequence to
 the law, which unpacks it POSITIONALLY. Nothing in either file checks the
 count, the order, or the meaning of a plane. Every defect that came from
 this seam was SILENT: the run gave a number, and not an error.

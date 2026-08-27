@@ -8,7 +8,7 @@ row no virtual row at all, thus an empty row costs nothing in the plan of
 another chunk.
 
 WHY A ROW RANGE, and never a set of pairs (trap 8 of REFACTOR.md, I6):
-`core.sell_c_sigma.step` writes `dZ.at[rows].add(...)`, thus only DISJOINT
+`forcedirected.step` writes `dZ.at[rows].add(...)`, thus only DISJOINT
 rows make the parts additive. `ForceDirected.embed` slices `dZ` by
 the same range for its batches, thus the chunk and the batch are the same
 object.
@@ -21,7 +21,7 @@ Provenance: `Fodiwalk._build_plan` of `fodiwalk/fodiwalk.py` (2026-08-20),
 with the `jax.jit`, `jax.device_put` and `functools.partial` plumbing moved
 out of the model class (defect D7).
 
-Import discipline: numpy, scipy, jax and `core` only.
+Import discipline: numpy, scipy, jax, `core` and `forcedirected` only.
 """
 from __future__ import annotations
 
@@ -32,8 +32,9 @@ import numpy as np
 import scipy.sparse as sp
 import jax
 
+from forcedirected import make_plan, step
+
 from ..core import plan_contract
-from ..core.sell_c_sigma import make_plan, step
 
 
 @dataclasses.dataclass(frozen=True)

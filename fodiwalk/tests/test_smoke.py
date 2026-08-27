@@ -39,7 +39,7 @@ def _model(**kw):
 
 
 # ===========================================================================
-# B4 -- core/force_directed.py
+# B4 -- the engine, `forcedirected/force_directed.py`
 # ===========================================================================
 def test_b4_callback_event_order(tiny):
     """B4.1. epochs = 3, batch_count = 2."""
@@ -88,7 +88,7 @@ def test_b4_batching_is_invariant(tiny):
 
 def test_b4_updateZ_dispatches_through_optim_and_defaults_to_plain(tiny):
     """B4.4."""
-    from fodiwalk.misc import optim
+    from forcedirected import optim
     A, n = tiny
     fw = _model()
     assert fw.rule is optim.RULES["plain"]
@@ -111,7 +111,7 @@ def test_b4_updateZ_dispatches_through_optim_and_defaults_to_plain(tiny):
 def test_b4_every_rule_runs_and_reports(tiny):
     """B7.1, on the small graph. A rule returns a finite `Z`, or the run
     RECORDS a divergence (I7). Neither raises."""
-    from fodiwalk.misc import optim
+    from forcedirected import optim
     A, n = tiny
     for name in optim.RULES:
         fw = _model(optim=name, lr=0.1)

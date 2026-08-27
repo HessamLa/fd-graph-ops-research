@@ -158,8 +158,8 @@ Three rules the builder must keep, and each one has already cost a run:
 `make_graph`/`augment_graph`/`fit` left it, and 2026-08-26 --
 `dev-docs/CATALOG.md` sections 21 and 23). The class itself lives in the
 ROOT package `forcedirected`, which `fodined` reads too; `fodiwalk.core`
-forwards to it and the import below is unchanged. Subclass it directly when
-you already have `D` and need only a new force law:
+re-exports the name, thus either import below works. Subclass it directly
+when you already have `D` and need only a new force law:
 
 ```python
 from fodiwalk.core import ForceDirected
@@ -541,14 +541,18 @@ plan_set.resident, plan_set.stats       # -> fw.plan_stats
 
 ## `misc/`
 
-### `optim.py` -- eight update rules
+### the update rules -- eight of them, in `forcedirected/optim.py`
 
 `plain`, `momentum`, `nesterov`, `adam`, `fa2`, `velocity`, `sgd`, `sqn`.
 A rule is pure: `step(Z, dZ, lr, state, epoch, **kw) -> (Z_new, state)`,
 with its state in a dict the model keeps.
 
+The rules sit beside the engine that dispatches through them, thus they are
+in `forcedirected` and not in `misc`. `fodiwalk.misc` re-exports `RULES`,
+`STATE_ARRAYS` and `state_arrays`.
+
 ```python
-from fodiwalk.misc import optim
+from forcedirected import optim
 
 def step_signsgd(Z, dZ, lr, state, epoch):
     return Z + lr * jnp.sign(dZ), state
