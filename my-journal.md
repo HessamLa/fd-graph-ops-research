@@ -1,5 +1,13 @@
 This document is maintained by the user.
 
+[Thu Aug 27 10:57:41 PM PDT 2026]
+
+In fodiwalk we are storing walks and its corresponding data in CSR format. This is overkill. The walks generated during augmentation must be stored as flat array, and then passed to the embedding stage. We can store index of the nodes in a walk, as well as their min-hop and frequency in flat array format. This will save huge amount of space and make memory access much faster. The byproduct is that we will not need the ``D`` or hops matrix anymore.
+
+The smart strategy would be to use the same walk generator used with node2vec. This way, we can compare out method vs node2vec and DeepWalk. How to use this? Just have the walk generator produce the walks. Then, for each node, reduce its corresponding walks to three same sized vector arrays: node indices, min hops, and frequencies. In worst case scenario the space will be $3 · r · |V| · l$, and the best case would be $3 · l$. 
+
+I am expecting this to be much faster.
+
 [Mon Aug 17 11:12:54 PM PDT 2026]
 
 We have been working on the experiments/fdwalk so far. In fdwalk, we decided to use random walk for augmentation. 
