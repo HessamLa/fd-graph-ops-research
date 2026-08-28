@@ -32,7 +32,7 @@ import numpy as np
 
 from fodiwalk import Fodiwalk, Config
 from fodiwalk.augment_graph import walks as W
-from fodiwalk.core import forces
+from fodiwalk.embed import forces
 from fodiwalk.make_graph import load
 
 import importlib.util

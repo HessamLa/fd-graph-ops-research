@@ -20,8 +20,8 @@ import pytest
 
 pytest.importorskip("fodiwalk.fodiwalk")     # M2 deletes the old class
 
-from fodiwalk.core.forces import force_fn
-from fodiwalk.core.plan_contract import PlaneContractError
+from fodiwalk.embed.forces import force_fn
+from fodiwalk.embed.plan_contract import PlaneContractError
 from fodiwalk.embed import (ForceSpec, PlanSpec, build_planes, build_plans,
                             force_params, resolve_degrees)
 from fodiwalk.fodiwalk import Fodiwalk
@@ -133,8 +133,8 @@ def test_a_missing_freq_raises_and_names_the_plane_and_the_law(old, cora):
 
 def test_the_registry_mirrors_the_asserter():
     """One plane name, one builder, one check. `PLANE_BUILDERS` <-> `PLANE_CHECKS`."""
-    from fodiwalk.core.forces import FORCE_PLANES
-    from fodiwalk.core.plan_contract import PLANE_CHECKS
+    from fodiwalk.embed.forces import FORCE_PLANES
+    from fodiwalk.embed.plan_contract import PLANE_CHECKS
     from fodiwalk.embed.planes import PLANE_BUILDERS
 
     assert set(PLANE_BUILDERS) == set(PLANE_CHECKS)

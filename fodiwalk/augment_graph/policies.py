@@ -3,9 +3,8 @@
 
 `build(A, n, spec, rng)` takes the un-augmented graph and gives an
 `Augmentation`. The policy comes from a REGISTRY and never from an `if`
-chain, exactly as `core.forces.FORCE_PLANES`, `weights.RULES` and
-`forcedirected.RULES` already do. A chain on a name is what let a missing
-`freq` fall back to the planes of another law, in silence.
+chain, exactly as `weights.RULES` already does. A chain on a name is what
+let a missing `freq` fall back to the planes of another law, in silence.
 
 EVERY POLICY HERE IS WALK-BASED, and that is the scope of the package
 (2026-08-20). `h` is a WALK GAP -- an upper bound of the hop distance,

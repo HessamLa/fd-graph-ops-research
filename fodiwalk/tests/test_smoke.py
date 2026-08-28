@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from fodiwalk import Fodiwalk
-from fodiwalk.core import Callback_Base, ForceDirected
-from fodiwalk.core.plan_contract import PlaneContractError
+from forcedirected import Callback_Base, ForceDirected
+from fodiwalk.embed.plan_contract import PlaneContractError
 from fodiwalk.augment_graph import walks as W
 
 
@@ -152,7 +152,7 @@ def test_b8_graph_walk_reproduces_walk_rows_for_the_same_seed(tiny):
 
 def test_b8_augment_graph_builds_the_planes_from_the_registry(tiny):
     """B8.1. The plane list follows the registry, in its order."""
-    from fodiwalk.core.forces import planes_of
+    from fodiwalk.embed.forces import planes_of
     A, n = tiny
     for force, fuse_planes, want_len in (("fdlinear", False, 2),
                                          ("fdlinear", True, 1)):

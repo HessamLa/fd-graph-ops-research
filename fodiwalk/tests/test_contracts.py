@@ -14,8 +14,8 @@ import pytest
 import scipy.sparse as sp
 
 from forcedirected import csr, sell_c_sigma
-from fodiwalk.core import forces, plan_contract
-from fodiwalk.core.plan_contract import PlaneContractError
+from fodiwalk.embed import forces, plan_contract
+from fodiwalk.embed.plan_contract import PlaneContractError
 from fodiwalk.augment_graph import pairs as PR
 from fodiwalk.augment_graph import walks as W
 from fodiwalk.augment_graph import weights as WT
@@ -88,13 +88,21 @@ def test_b1_engine_package_imports_nothing_of_this_repository():
                     f"of this repository")
 
 
-def test_core_imports_only_core():
-    """The risk of section 9: `core` must import no other stage, at module
-    level. `core` reaches the ROOT package `forcedirected` for the engine,
-    the kernel and the CSR helpers; that is no stage of `fodiwalk` and it
-    reads nothing of this repository, thus the one-way rule is unchanged,
-    and it is what this gate keeps."""
-    for path in sorted((PKG / "core").glob("*.py")):
+def test_embed_imports_only_embed():
+    """The risk of section 9, at its new address. This gate was
+    `test_core_imports_only_core` until 2026-08-28, when `forces.py` and
+    `plan_contract.py` moved from `fodiwalk/core/` to `fodiwalk/embed/` and
+    `fodiwalk/core/` was deleted. `embed` now holds the physics, thus it is
+    the package at the BOTTOM of the stages and it must import no other
+    stage at module level.
+
+    `embed` reaches the ROOT package `forcedirected` for the engine, the
+    kernel and the CSR helpers; that is no stage of `fodiwalk` and it reads
+    nothing of this repository, thus the one-way rule is unchanged, and it
+    is what this gate keeps. Stage 2 reads `embed` (it asks the law which
+    planes to build), thus an import the other way would close a cycle;
+    `test_structure.py` holds that gate at function level too."""
+    for path in sorted((PKG / "embed").glob("*.py")):
         tree = ast.parse(path.read_text())
         for node in tree.body:                       # module level only
             mods = []
@@ -166,7 +174,7 @@ def test_b2_a_pad_cell_contributes_zero_for_a_law_with_a_constant(tiny):
 
 
 # ===========================================================================
-# B3 -- core/forces.py and the registry
+# B3 -- embed/forces.py and the registry
 # ===========================================================================
 def test_b3_registry_covers_every_law():
     """B3.1. One law, one plane tuple, and no branch anywhere else."""

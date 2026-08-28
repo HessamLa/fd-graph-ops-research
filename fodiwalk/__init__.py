@@ -12,25 +12,34 @@
 The tree, and the one-way dependency between the stages::
 
     config.py        class Config -- every knob, FLAT
-    core/            forces, plan_contract -- the PHYSICS of this
-                     package. The engine `ForceDirected`, the
-                     SELL-C-sigma kernel and the CSR helpers are NOT
-                     here: they live in the root package
-                     `forcedirected`, which `fodined` reads too.
-                     `core/__init__.py` re-exports their names.
-                     CATALOG section 23.
     base.py          class Fodiwalk_base -- the pipeline contract: the
                      stage hooks a concrete model implements
     make_graph/      datasets                            (stage 1)
     augment_graph/   policies, walks, pairs, weights, buckets, far_pairs,
-                     landmarks, merge, planes, degrees    (stage 2, incl.
-                     the law's planes and the degree divisor)
-    embed/           planner                          (stage 3, CONSUMES)
-    misc/            optim, drop, evaluation             (stage 3 support)
+                     landmarks, merge                    (stage 2, PRODUCES
+                     the matrix `D` and its `freq`. It knows no force law.)
+    embed/           forces, plan_contract, planes, degrees, planner
+                     (stage 3, CONSUMES. Everything that knows a LAW: the
+                     laws, the plane registry, the asserter, the plane and
+                     degree builders, and the batch plan.)
+    misc/            drop, evaluation                    (stage 3 support)
     model.py         class Fodiwalk(Fodiwalk_base) -- the three stages, WIRED
 
-`core` imports nothing of the package except `core`. Every other stage may
-import `core`. A cycle is a defect.
+The engine `ForceDirected`, the SELL-C-sigma kernel and the CSR helpers are
+in the ROOT package `forcedirected`, which `fodined` reads too. CATALOG
+section 23.
+
+STAGE 2 AND STAGE 3 DO NOT IMPORT EACH OTHER. Stage 2 produces and stage 3
+consumes, across a fixed data contract -- `augment_graph.result.Augmentation`
+holds `D`, `freq`, `stats` and `info`, with fixed types and shapes -- and
+neither calls a function of the other. `model.py` carries the data across;
+it is the composition root and belongs to neither stage.
+
+The tree reached this shape on 2026-08-28. `fodiwalk/core/` held `forces.py`
+and `plan_contract.py` and is DELETED; `planes.py` and `degrees.py` went
+back to `embed/` from `augment_graph/`, because building a plane meant
+asking a law what it reads, and that question was an import from stage 2
+into stage 3.
 
 This package is a REFACTOR of `experiments/fdwalk/` with a parity
 requirement: the physics, the augmentation rules and the numbers do not

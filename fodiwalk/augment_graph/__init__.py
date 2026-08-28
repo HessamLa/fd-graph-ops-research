@@ -11,32 +11,34 @@ hop distance -- and never a measured distance. The exact-distance policies
 `ball` and `sampled` were removed on 2026-08-20; see `dev-docs/CATALOG.md`
 section 18.
 
-`planes.py` and `degrees.py` moved here from `embed/` on 2026-08-21: a
-plane and a degree are properties of the RECIPE (one pair policy plus one
-force law) and not of the kernel that consumes them, thus they are
-DATA-PREPARATION and belong to stage 2. `embed/` keeps only the plan build
-and the jitted kernel wiring -- consumption, and nothing else
-(`dev-docs/fodiwalk-module.md`, `dev-docs/CATALOG.md` the RECIPE entry).
+THIS PACKAGE KNOWS NO FORCE LAW. `planes.py` and `degrees.py` were here
+between 2026-08-21 and 2026-08-28 and went back to `embed/`: a plane and a
+degree are defined by the LAW that reads them, and to build one this
+package had to ask the law what it wanted. That question was an import from
+stage 2 into stage 3. Stage 2 PRODUCES and stage 3 CONSUMES, across a fixed
+data contract, and neither calls the other
+(`dev-docs/fodiwalk-module.md`).
 
 THREE INVARIANTS, and each one has already caused a silent defect:
 
   I4  a stored weight is an INTEGER in `[1, window]`, and 1 means
-      adjacency. A continuous weight gives every pair its own shell,
-      `degrees_from_D` gives 0 for every row, and the whole force
+      adjacency. A continuous weight gives every pair its own shell, the
+      stage-3 degree count then gives 0 for every row, and the whole force
       vanishes: AUC 0.55 with `||dZ|| = 0.000`.
   I5  attraction exists at `h = 1` only, thus a policy that can leave a
-      row with no `h = 1` entry MUST pass an explicit `degrees` array, or
-      that row freezes in silence.
+      row with no `h = 1` entry MUST report a real degree, or that row
+      freezes in silence.
   --  `walk_rows` has NO prune: its bound IS `n_walks * walk_len` for each
       row, thus the walk budget of the caller is the memory bound.
       `walk_pair_stats` DOES prune, and its prune is an approximation that
       `prunes > 0` reports.
 
-Import discipline: this package imports numpy, scipy and `core`. `core` is
-read for the plane contract only (`planes_of`, `fuse`, `degrees_from_D`,
-`PLANE_CHECKS`) -- the recipe's data preparation needs to know what a law's
-planes are named and what a degree promises. It never imports `embed` or
-the model.
+THE SEAM is `result.Augmentation`, and it is DATA: `D`, `freq`, `stats`,
+`info`, with fixed types and shapes. Nothing else crosses.
+
+Import discipline: numpy, scipy and its own modules. NOTHING else -- no
+`embed`, no `forcedirected`, no `make_graph`, no `misc`, no model.
+`tests/test_structure.py` asserts it in both directions.
 """
 from __future__ import annotations
 
@@ -52,8 +54,6 @@ from . import landmarks
 from .result import Augmentation, AugmentSpec, take
 from .merge import add_far_pairs, drop_pairs_of
 from .policies import POLICIES, build, graph_walk
-from .planes import ForceSpec, PLANE_BUILDERS, build_planes, force_params
-from .degrees import resolve_degrees
 
 __all__ = [
     "split_key", "to_csr", "to_csr_directed", "cap_per_node", "row_cap",
@@ -63,6 +63,4 @@ __all__ = [
     "degree_table", "sample_far_pairs", "landmarks",
     "Augmentation", "AugmentSpec", "take", "add_far_pairs", "drop_pairs_of",
     "POLICIES", "build", "graph_walk",
-    "ForceSpec", "PLANE_BUILDERS", "build_planes", "force_params",
-    "resolve_degrees",
 ]

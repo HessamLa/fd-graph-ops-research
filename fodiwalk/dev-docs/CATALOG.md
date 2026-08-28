@@ -68,7 +68,8 @@ reads, and in what order.
 | `fdlinear_3plane` | `(shell_coeff, h, freq)` | `h <= 1` only | REMOVED 2026-08-19, see 13 |
 | `fdlinear_fused` | `(w,)` | `w < 0` | live |
 
-**Provenance.** [fodiwalk/core/forces.py](../core/forces.py)
+**Provenance.** [fodiwalk/embed/forces.py](../embed/forces.py) (moved from
+`core/forces.py` 2026-08-28, section 26).
 
 ### 1.1 `shell_force` (`v1`) -- the law of the package
 
@@ -141,7 +142,8 @@ passes a COUNT test -- two planes for a two-plane law -- and it is still
 the defect of 2026-08-18. The value test catches it: only `D.data` itself
 is `D.data`. `check("fdlinear", (freq, h), D)` therefore RAISES.
 
-**Provenance.** [fodiwalk/core/plan_contract.py](../core/plan_contract.py)
+**Provenance.** [fodiwalk/embed/plan_contract.py](../embed/plan_contract.py)
+(moved from `core/plan_contract.py` 2026-08-28, section 26).
 
 ---
 
@@ -2191,3 +2193,195 @@ working tree.
 [embed/planner.py](../embed/planner.py),
 [tests/test_contracts.py](../tests/test_contracts.py),
 [tests/test_structure.py](../tests/test_structure.py).
+
+---
+
+## 26. UPDATE 2026-08-28 -- the three stages, and nothing else: `core/` is deleted and the LAW moves into `embed/`
+
+**Read this before an earlier provenance link.** Every link above into
+`../core/forces.py`, `../core/plan_contract.py`, `../augment_graph/planes.py`
+or `../augment_graph/degrees.py` now resolves under `../embed/`, with the
+same file name. Nothing above is removed; the table in this section is the
+mapping.
+
+**Reason for the update.** Two reasons, and the second REVERSES section 20.
+
+The first is `fodiwalk/core/`. Section 25 deleted its four forwarders and
+left two files, `forces.py` and `plan_contract.py`.
+`dev-docs/fodiwalk-module.md` names THREE stages -- graph construction,
+graph augmentation, embedding -- and `core/` was a fourth home that no
+stage boundary describes. A force law is the FUNCTION stage 3 applies, thus
+it belongs to stage 3.
+
+The second is the stage contract itself, stated by the project owner:
+
+> Stage 2 prepares the material for stage 3. There is absolutely no
+> interaction of any sort between stages other than producing and consuming
+> per a predefined contract. The contract being the types and shape of the
+> data being handed over between the two stages. Each stage will have its
+> own functions and data structures.
+
+Section 20 moved `planes.py` and `degrees.py` into `augment_graph/` on the
+reasoning that a plane and a degree are "data preparation of the recipe".
+That reasoning is now rejected, and the evidence is in the imports it
+forced. To BUILD a plane, `augment_graph/planes.py` had to ask the law what
+it reads (`planes_of`, `fuse`, `PLANE_CHECKS`), and `augment_graph/
+degrees.py` had to call `degrees_from_D`. Asking is an import. Stage 2 was
+CALLING INTO the physics, which is an interaction and not a hand-over. A
+plane is defined by the law that unpacks it, a degree divisor by the law
+that needs it; both are stage-3 things, and the recipe idea of 20.1 was
+what disguised that.
+
+**What moved.**
+
+| from | to |
+| --- | --- |
+| `core/forces.py` | [`embed/forces.py`](../embed/forces.py) |
+| `core/plan_contract.py` | [`embed/plan_contract.py`](../embed/plan_contract.py) |
+| `augment_graph/planes.py` | [`embed/planes.py`](../embed/planes.py) |
+| `augment_graph/degrees.py` | [`embed/degrees.py`](../embed/degrees.py) |
+| `core/__init__.py` | DELETED. `fodiwalk/core/` no longer exists |
+
+`plan_contract.py` had to move WITH `forces.py`: it reads `FORCE_PLANES`
+and `planes_of`, thus leaving it in `core/` would have made `core` import
+`embed` and turned the dependency upside down.
+
+**No line of a function body changed.** `degrees_from_D`, `fdlinear`,
+`fdlinear_fused`, `fuse`, `planes_of`, `force_fn`, `FORCE_PLANES`,
+`FORCE_FN`, `ForceSpec`, `PLANE_BUILDERS`, `build_planes`, `force_params`,
+`resolve_degrees` and every function of `plan_contract.py` keep their
+behaviour, their names and their error messages exactly. `embed/planner.py`
+did not move and did not change, except that `from ..core import
+plan_contract` became `from . import plan_contract`.
+
+**What NARROWED: the seam, back to DATA.** Section 20 widened
+`augment_graph.result.Augmentation` (19.1) with `planes`, `degrees` and
+`params`. All three are REMOVED. No code ever filled them or read them --
+`Fodiwalk.augment_graph` builds the three into local variables and hands
+them straight to `build_plans` -- thus the removal changes no behaviour and
+takes three stage-3 names out of the stage-2 dataclass. The seam is again
+exactly four fields:
+
+    D: sp.csr_matrix        the weighted matrix; `D.data` is the `h` values
+    freq: np.ndarray|None   (nnz,) aligned to `D.indices`, or None
+    stats: dict             the walk statistics
+    info: dict              the counts and timings a log prints
+
+**The import rules, as they now stand.**
+
+    forcedirected/  imports nothing of this repository. The engine.
+    make_graph/     numpy, scipy.
+    augment_graph/  numpy, scipy and its own modules. NOTHING else.
+    embed/          forcedirected and its own modules. NO augment_graph.
+    model.py        all of the above, and it is the ONLY place they meet.
+
+`model.py` is the composition root and belongs to neither stage; carrying
+an `Augmentation` from stage 2 to stage 3 is its job. Section 20's widened
+rule for `augment_graph` ("numpy, scipy, `core`") is withdrawn.
+
+**The gates that enforce them.** Both directions, and at FUNCTION level as
+well as module level, because a leak hidden in a function body is defect D6:
+
+  * [`test_augment_graph_imports_no_other_stage`](../tests/test_structure.py)
+    -- allowed set EMPTY. It was `test_augment_graph_imports_no_embed_no_model`
+    with `allowed={"core"}`.
+  * [`test_augment_graph_imports_no_root_package_at_all`](../tests/test_structure.py)
+    -- NEW. `ALLOWED_ROOT_PKGS` lets any stage reach `forcedirected`, which
+    is right for `embed` and wrong for stage 2: stage 2 drives no kernel.
+  * [`test_embed_imports_no_augment_graph_no_model`](../tests/test_structure.py)
+    -- allowed set EMPTY. It was
+    `test_embed_imports_only_core_no_augment_graph_no_model`.
+  * [`test_the_core_package_stays_deleted`](../tests/test_structure.py)
+    -- NEW, beside the god-class gate: a file put back under `core/` is a
+    fourth home for the physics that no stage boundary describes.
+  * [`test_embed_imports_only_embed`](../tests/test_contracts.py)
+    -- the module-level form, renamed from `test_core_imports_only_core`.
+  * `test_core_imports_no_embed` is DELETED with the package it judged.
+
+Five negative controls were planted in a scratch COPY of the tree, never in
+the live one, and every one was caught: stage 2 reaching `embed` at module
+level and inside a function body, stage 2 reaching `forcedirected`, and
+stage 3 reaching `augment_graph` at module level and inside a function body.
+
+**The gates.** No number changed, and that was the requirement.
+`A/B OK -- every score matches side A` on all four cases;
+`GOLDEN OK (both)`; `API OK`; `pytest fodiwalk/tests forcedirected/tests
+-m "not big"` gives `82 passed, 2 skipped, 3 deselected`, the same as the
+baseline; and `fodined.embedding.sell_c_sigma.make_plan` still resolves.
+
+**Adopted at.** 2026-08-28, repository at `89abaf2` plus the uncommitted
+working tree.
+
+**Provenance.** [embed/__init__.py](../embed/__init__.py),
+[embed/forces.py](../embed/forces.py),
+[embed/plan_contract.py](../embed/plan_contract.py),
+[embed/planes.py](../embed/planes.py),
+[embed/degrees.py](../embed/degrees.py),
+[augment_graph/__init__.py](../augment_graph/__init__.py),
+[augment_graph/result.py](../augment_graph/result.py),
+[model.py](../model.py), [config.py](../config.py),
+[__init__.py](../__init__.py), [README.md](../README.md),
+[tests/test_structure.py](../tests/test_structure.py),
+[tests/test_contracts.py](../tests/test_contracts.py).
+
+---
+
+## 27. UPDATE 2026-08-28 -- the stage contract, named as an entity
+
+**What it is.** The rule that governs every boundary between the three
+stages of `fodiwalk` -- `make_graph`, `augment_graph`, `embed`. A stage
+produces material for the next one and consumes material from the one
+before, and that is the ONLY thing that happens between two stages. No
+stage imports another stage, calls a function of another stage, or reads
+another stage's registry, table or constant. What crosses a boundary is
+DATA, and the contract is the TYPE and the SHAPE of that data.
+
+**How it works.** Each boundary names one data type, fixed in shape:
+
+```
+make_graph     --[ A: symmetric CSR, zero diagonal, sorted indices ]-->
+augment_graph  --[ Augmentation: D, freq, stats, info ]-->
+embed          --[ Z: (n, n_dim) ]-->
+```
+
+`model.py` is the ONLY place two stages meet: it takes what one stage
+produced and hands it to the next. It belongs to neither stage.
+
+**Reason for the update.** Given by the project owner, in answer to a claim
+that "the stage that prepares the values has to ask the force law which
+values it needs" -- REPUDIATED:
+
+> Stage 2 prepares the material for stage 3. There is absolutely no
+> interaction of any sort between stages other than producing and consuming
+> per a predefined contract. The contract being the types and shape of the
+> data being handed over between the two stages. Each stage will have its
+> own functions and data structures.
+
+Section 20 and section 8 of `REFACTOR.md` argued the repudiated position:
+that a plane and a degree divisor are stage-2 "data preparation", which
+built `augment_graph/planes.py` and `augment_graph/degrees.py` importing
+`core.forces.planes_of`/`fuse` to ASK the law what it reads. That import is
+the interaction the ruling forbids. Section 26 above reverses it: the two
+files moved to `embed/`, which owns the law, and `core/` is deleted.
+`REFACTOR.md` sections 3, 3.1 and 8 are marked superseded and kept for
+history; they are not corrected in place.
+
+**The test the ruling gives.** If a stage needs to know the name of a force
+law, a policy of another stage, or the shape of another stage's internals,
+it is doing work that belongs elsewhere.
+
+```python
+D: sp.csr_matrix        # the weighted matrix; D.data holds h
+freq: np.ndarray | None # (nnz,) aligned to D.indices, or None
+stats: dict              # the walk statistics
+info: dict               # the counts and timings a log prints
+# this is ALL of `Augmentation` -- the whole seam, stage 2 to stage 3
+```
+
+**Adopted at.** 2026-08-27 (the ruling), written into the tree 2026-08-28
+with section 26.
+
+**Provenance.** [dev-docs/fodiwalk-module.md](fodiwalk-module.md) section
+"The stage contract (2026-08-27)", [augment_graph/result.py](../augment_graph/result.py),
+[dev-docs/CATALOG.md](CATALOG.md) section 26,
+[dev-docs/REFACTOR.md](REFACTOR.md) sections 3, 3.1, 8.

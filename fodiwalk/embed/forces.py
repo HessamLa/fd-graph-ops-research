@@ -1,9 +1,9 @@
-"""core.forces -- THE FORCE LAWS, and the quantities they are defined in.
+"""embed.forces -- THE FORCE LAWS, and the quantities they are defined in.
 
 Everything that defines the physics is here and nowhere else: the laws, the
 planes they read, and the registry that says which is which.
 
-WHY THIS FILE IS IN `core` AND NOT IN `misc`. The law and the plan are ONE
+WHY THIS FILE IS IN `embed` AND NOT IN `misc`. The law and the plan are ONE
 contract and not two components. `forcedirected.make_plan` takes a SEQUENCE
 of planes, and `step` gives that sequence to `force_fn`, which unpacks it
 POSITIONALLY:
@@ -19,7 +19,7 @@ physics, and a policy that emptied the `h = 1` rows and froze them. A run
 gave a number, and not an error.
 
 `FORCE_PLANES` below is the answer. It is the ONE statement of which planes
-a law reads, and in what order. `core/plan_contract.py` asserts it, and
+a law reads, and in what order. `embed/plan_contract.py` asserts it, and
 `Fodiwalk.augment_graph` builds its plane list FROM it -- never from an
 `if` chain.
 
@@ -35,6 +35,9 @@ laws and the two host functions that made the coefficient are deleted from
 this package. `experiments/fdwalk/` still holds them.
 
 Provenance, verbatim moves:
+  * This file was `fodiwalk/core/forces.py` until 2026-08-28. It moved
+    here with `plan_contract.py`, and `fodiwalk/core/` was then empty and
+    is deleted. No line of a body changed.
   * `degrees_from_D` from `fodined/embedding/shell_force.py`.
   * `fdlinear`, `fdlinear_fused`, `fuse` from
     `experiments/fdwalk/force_fdlinear.py`.
@@ -151,7 +154,7 @@ def fuse(h, freq):
 # ---------------------------------------------------------------------------
 # THE REGISTRY. The one statement of which planes a law reads, in order.
 # ---------------------------------------------------------------------------
-# A plane name is not a decoration: `core/plan_contract.py` reads it and
+# A plane name is not a decoration: `embed/plan_contract.py` reads it and
 # asserts what the name promises (I1, I2, I4 of the PRD). `Fodiwalk` builds
 # its plane list from this table and never from an `if` chain, thus a new
 # law adds one row here and no branch anywhere.

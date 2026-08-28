@@ -1,5 +1,4 @@
-"""augment_graph.degrees -- the divisor of the row sum. THREE sources, an
-order.
+"""embed.degrees -- the divisor of the row sum. THREE sources, an order.
 
 `forcedirected.make_plan` turns this array into `inv_deg_ext`, and the
 kernel multiplies every row of `dZ` by it. A degree of 0 becomes 0.0 and it
@@ -8,24 +7,25 @@ moves, for the whole run, and nothing raises (trap 4 of
 `dev-docs/REFACTOR.md`, invariant I5). `plan_contract.check_degrees`
 asserts against exactly that, and this module is what must not produce it.
 
-THIS MODULE IS STAGE 2. The degree a row gets depends on WHICH pairs the
-augmentation stored (`h == 1` entries, or an explicit array keyed to the
-`edge_rule`), thus resolving it is a property of the recipe's data, not of
-the kernel that consumes the result.
+THIS MODULE IS STAGE 3. "What counts as a degree" is a FORCE-LAW question
+-- `degrees_from_D` counts the `h == 1` entries because attraction lives at
+`h = 1` -- thus it belongs beside the law. It reads the DATA stage 2 handed
+over, `D` and the adjacency `A`, and calls nothing of stage 2.
 
 Provenance: `Fodiwalk._build_degrees` of `fodiwalk/fodiwalk.py`
 (2026-08-20); `fodiwalk/embed/degrees.py` (2026-08-20, the first split);
-moved into `augment_graph` (2026-08-21) when the stage boundary moved. No
-line of the body changed across either move.
+moved into `augment_graph` (2026-08-21); moved BACK here (2026-08-28), when
+the stages went to DATA only and stage 2 stopped importing the law. No line
+of the body changed across any move.
 
-Import discipline: numpy, scipy and `core` only.
+Import discipline: numpy, scipy and the sibling modules of `embed`.
 """
 from __future__ import annotations
 
 import numpy as np
 import scipy.sparse as sp
 
-from ..core.forces import degrees_from_D
+from .forces import degrees_from_D
 
 
 def resolve_degrees(D, G, spec, explicit=None) -> np.ndarray:

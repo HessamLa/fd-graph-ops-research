@@ -63,6 +63,10 @@ In the documents, keep a catalog of names of entities such as method, policy, sc
 
 The catalog is an incrementing document. Do not remove anything. For update, mention the reason for update and the include the updated version. Also include at which version of the code development or experiment or research step the update is adopted.
 
+## Agentics
+
+A chat session agent must print in the chat windows the timestamp, sender name and ID, and the prompt body of any incoming prompt from other agents.
+
 ## Python Environment
 
 This project's virtual environment lives at ``.venv/``. 
@@ -74,3 +78,4 @@ Use these exact commands:
 - Run a tool: ``.venv/bin/pytest``
 
 To store large files and artifacts use ``/tmp/`` for temporary ones, and ``data_cache/`` for others. These files can be ``.npz`` and other files. You may use a symlink to link to them locally.
+

@@ -1,4 +1,4 @@
-"""core.plan_contract -- the asserter of the plane contract.
+"""embed.plan_contract -- the asserter of the plane contract.
 
 THIS IS THE ONLY NEW MODULE OF THE PACKAGE, and it is the reason the
 refactor pays.
@@ -51,7 +51,12 @@ Thus `check("fdlinear", (freq, h), D)` RAISES: `fdlinear` reads
 `(h, freq)`, and a `freq` array in the `h` position is not `D.data`. That
 is the 2026-08-18 defect, caught at the seam.
 
-Import discipline: numpy and `core.forces` only.
+Import discipline: numpy and `embed.forces` only.
+
+Provenance: this file was `fodiwalk/core/plan_contract.py` until
+2026-08-28. It moved here with `forces.py`, whose registry it reads; a
+`core` that read `embed` would have turned the dependency upside down.
+No line of a body changed.
 """
 from __future__ import annotations
 

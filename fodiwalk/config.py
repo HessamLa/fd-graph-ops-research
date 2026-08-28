@@ -11,19 +11,18 @@ The narrowing happens at the SEAM and not here. Each stage reads its own
 frozen spec, thus a stage cannot reach the knobs of another stage:
 
     augment_graph.result.AugmentSpec.from_config(cfg)    stage 2, the pairs
-    augment_graph.planes.ForceSpec.from_config(cfg)      stage 2, the physics
+    embed.planes.ForceSpec.from_config(cfg)              stage 3, the physics
     embed.planner.PlanSpec.from_config(cfg)              stage 3, the layout
 
-`ForceSpec` moved to stage 2 on 2026-08-21: a plane and a degree are
-prepared DATA of the recipe (one pair policy plus one force law), not
-kernel state, thus resolving them is `augment_graph` work
-(`dev-docs/CATALOG.md`, the RECIPE entry).
+`ForceSpec` was `augment_graph.planes.ForceSpec` between 2026-08-21 and
+2026-08-28. It went back to stage 3 with the law it describes: stage 2
+knows no force law at all.
 
 Each spec stays in the package that reads it, and this module does NOT
-re-export them. A re-export would pull `embed`, thus `core` and jax, into
-the import of the configuration, and it would give a second name for one
-class. `from_config` reads the attributes by NAME, thus a stage package
-needs no import of this module at all and the dependency runs one way.
+re-export them. A re-export would pull `embed`, thus jax, into the import
+of the configuration, and it would give a second name for one class.
+`from_config` reads the attributes by NAME, thus a stage package needs no
+import of this module at all and the dependency runs one way.
 
 Import discipline: `dataclasses` only. This module is the bottom of the tree.
 """
@@ -70,7 +69,7 @@ class Config:
     far_scale: float = 1.0
 
     # -- the physics ---------------------------------------------------
-    force: str = "fdlinear"        # a key of core.forces.FORCE_PLANES
+    force: str = "fdlinear"        # a key of embed.forces.FORCE_PLANES
     fuse_planes: bool = False      # fdlinear -> fdlinear_fused
     no_deg_norm: bool = False
     deg_source: str = "auto"       # auto | D | A

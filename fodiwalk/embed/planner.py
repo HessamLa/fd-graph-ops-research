@@ -21,7 +21,8 @@ Provenance: `Fodiwalk._build_plan` of `fodiwalk/fodiwalk.py` (2026-08-20),
 with the `jax.jit`, `jax.device_put` and `functools.partial` plumbing moved
 out of the model class (defect D7).
 
-Import discipline: numpy, scipy, jax, `core` and `forcedirected` only.
+Import discipline: numpy, scipy, jax, the sibling modules of `embed`
+and `forcedirected` only.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ import jax
 
 from forcedirected import make_plan, step
 
-from ..core import plan_contract
+from . import plan_contract
 
 
 @dataclasses.dataclass(frozen=True)

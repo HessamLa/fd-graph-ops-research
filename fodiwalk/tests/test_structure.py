@@ -25,7 +25,7 @@ import pathlib
 HERE = pathlib.Path(__file__).resolve().parent
 PKG = HERE.parent
 
-KNOWN_STAGE_PKGS = {"core", "augment_graph", "embed", "make_graph", "misc"}
+KNOWN_STAGE_PKGS = {"augment_graph", "embed", "make_graph", "misc"}
 
 # The ROOT packages a module of `fodiwalk` MAY import. `forcedirected` holds
 # the engine `ForceDirected`, the SELL-C-sigma kernel, the CSR helpers and
@@ -106,40 +106,62 @@ def _assert_package_imports_only(root: pathlib.Path, pkg: str,
 
 
 # ===========================================================================
-# 1. the dependency runs one way (G7, plus REFACTOR.md section 3)
+# 1. the dependency runs one way (G7; `dev-docs/CATALOG.md` section 26
+#    replaces REFACTOR.md section 3, which allowed the stages to import
+#    each other)
 # ===========================================================================
-# `core -> core` only is `test_core_imports_only_core` of
-# `test_contracts.py`; it is not duplicated here.
-def test_core_imports_no_embed(root: pathlib.Path = PKG):
-    """Extends `test_core_imports_only_core` (`test_contracts.py`), written
-    before the `embed` package existed and thus silent on it. `embed` reads
-    `core`; `core` must never read `embed`, module level or function level,
-    or the one-way dependency of REFACTOR.md section 3 becomes a cycle.
+# STAGE 2 AND STAGE 3 DO NOT IMPORT EACH OTHER, IN EITHER DIRECTION.
+# `dev-docs/fodiwalk-module.md`, and the reading settled on 2026-08-28:
+# stage 2 PRODUCES and stage 3 CONSUMES, across a fixed data contract, and
+# neither calls a function of the other. What crosses is
+# `augment_graph.result.Augmentation` -- `D`, `freq`, `stats`, `info` --
+# with fixed types and shapes. `model.py` carries it across; it is the
+# composition root and belongs to neither stage.
+#
+# Both directions are asserted, because ONE of them was live code until
+# 2026-08-28: `augment_graph/planes.py` imported `planes_of` to ask a law
+# which values it reads, and `augment_graph/degrees.py` imported
+# `degrees_from_D`. Both files went back to `embed/`, where the law is.
+# `embed -> embed` only, at MODULE level, is `test_embed_imports_only_embed`
+# of `test_contracts.py`; the two gates below are the same rule at FUNCTION
+# level too.
+def test_augment_graph_imports_no_other_stage(root: pathlib.Path = PKG):
+    """Stage 2 is the walks, the pairs, the weights and the policies, and it
+    knows NO force law. It builds `D` and `freq` and hands them over; it
+    never asks stage 3 what to build, because asking is an import.
 
-    `core` reaching `forcedirected` is NOT such a leak, and this gate stays
+    The allowed set is EMPTY: not `embed`, not `make_graph`, not `misc`,
+    not the model."""
+    _assert_package_imports_only(root, "augment_graph", allowed=set())
+
+
+def test_augment_graph_imports_no_root_package_at_all(root: pathlib.Path = PKG):
+    """The other half of the same rule, for the packages beside `fodiwalk`.
+
+    `ALLOWED_ROOT_PKGS` lets any stage reach `forcedirected`, and for
+    `embed` that is right: `forcedirected` IS the kernel it drives. Stage 2
+    drives no kernel. It takes a graph and gives a matrix, thus numpy and
+    scipy are the whole of what it needs, and a reach for the engine would
+    be a stage-3 concern growing back inside stage 2."""
+    repo_pkgs = _repo_root_pkgs(root)
+    for path in sorted((root / "augment_graph").glob("*.py")):
+        bad = _root_targets(path, repo_pkgs)
+        assert not bad, (
+            f"{path.relative_to(root)} imports the root package(s) "
+            f"{sorted(bad)}. Stage 2 imports numpy, scipy and its own "
+            f"modules, and nothing else.")
+
+
+def test_embed_imports_no_augment_graph_no_model(root: pathlib.Path = PKG):
+    """The direction that must stay empty too. Stage 3 holds the force law,
+    the planes it reads, the degree divisor it needs and the plan the kernel
+    runs. It receives `D` and `freq` as DATA and reaches back into stage 2
+    for nothing -- at module level or inside a function body.
+
+    `embed` reaching `forcedirected` is NOT such a leak, and this gate stays
     silent on it by design (`ALLOWED_ROOT_PKGS`): that root package holds
     the engine and reads nothing of this repository."""
-    for path in sorted((root / "core").glob("*.py")):
-        bad = _external_targets(path, "core") & {"embed"}
-        assert not bad, f"{path.relative_to(root)} imports embed"
-
-
-def test_augment_graph_imports_no_embed_no_model(root: pathlib.Path = PKG):
-    """Stage 2 may read `core` (package docstring, since the stage boundary
-    moved 2026-08-21): `planes.py` needs `core.forces.planes_of`/`fuse` and
-    `core.plan_contract.PLANE_CHECKS` to prepare a law's data. It must
-    never reach `embed` or the model, or the seam would run backward."""
-    _assert_package_imports_only(root, "augment_graph", allowed={"core"})
-
-
-def test_embed_imports_only_core_no_augment_graph_no_model(
-        root: pathlib.Path = PKG):
-    """Stage 3 is CONSUMPTION ONLY (`dev-docs/fodiwalk-module.md`): it reads
-    the engine of `core` to build the plan and the jitted steps, and it
-    must never reach back into stage 2's data preparation or the model, or
-    `core` would end up two hops from `Config` through the back door
-    REFACTOR.md section 3 forbids."""
-    _assert_package_imports_only(root, "embed", allowed={"core"})
+    _assert_package_imports_only(root, "embed", allowed=set())
 
 
 def test_make_graph_imports_only_make_graph(root: pathlib.Path = PKG):
@@ -163,8 +185,8 @@ def test_no_module_imports_a_private_name_of_another_module(
     """D6 was `from .core.sell_c_sigma import make_plan, _step`: the god
     class reached a private helper of another module. The split renamed it
     to `step` and kept `_step` only as an alias that a package's own
-    `__init__.py` may re-export as part of its declared surface (that is
-    `core/__init__.py` today, and is why `__init__.py` is excluded below)
+    `__init__.py` may re-export as part of its declared surface (which is
+    why `__init__.py` is excluded below)
     -- a PLAIN module reaching into another module's private name is the
     defect, and it stays forbidden everywhere else."""
     for path in sorted(root.rglob("*.py")):
@@ -189,7 +211,7 @@ def test_model_holds_no_compare_against_a_policy_or_law_literal(
         root: pathlib.Path = PKG):
     """D2. `_build_D`, `graph_walk` and `_plane` picked the physics with an
     `if` chain on a string; a missing branch silently ran another law's
-    planes and a run went to NaN with no error (see `core/forces.py`).
+    planes and a run went to NaN with no error (see `embed/forces.py`).
     `POLICIES`, `PLANE_BUILDERS`, `FORCE_PLANES`, `weights.RULES` and
     `optim.RULES` replace the chain with a registry, thus `model.py` must
     hold no `Compare` against one of these literals. A docstring or a
@@ -309,15 +331,14 @@ def test_policies_registry_covers_every_pairs_choice_of_config(
 
 
 def test_plane_builders_registry_key_set_equals_plane_checks():
-    """`augment_graph/planes.py` builds a plane; `core/plan_contract.py`
-    asserts what the name promises (I1, I2, I4). A name held by one table
-    and not the other is a plane built and not asserted, or asserted and
-    never built -- `augment_graph/planes.py` already guards this with a
-    module-level `assert`; this test gives it a name and a failure message
-    in the suite, and it runs even if that module-level assert is ever
-    loosened."""
-    from fodiwalk.augment_graph.planes import PLANE_BUILDERS
-    from fodiwalk.core.plan_contract import PLANE_CHECKS
+    """`embed/planes.py` builds a plane; `embed/plan_contract.py` asserts
+    what the name promises (I1, I2, I4). A name held by one table and not
+    the other is a plane built and not asserted, or asserted and never
+    built -- `embed/planes.py` already guards this with a module-level
+    `assert`; this test gives it a name and a failure message in the suite,
+    and it runs even if that module-level assert is ever loosened."""
+    from fodiwalk.embed.planes import PLANE_BUILDERS
+    from fodiwalk.embed.plan_contract import PLANE_CHECKS
 
     assert set(PLANE_BUILDERS) == set(PLANE_CHECKS), (
         f"PLANE_BUILDERS {sorted(PLANE_BUILDERS)} != "
@@ -338,6 +359,21 @@ def test_the_god_class_module_and_the_empty_models_dir_stay_deleted(
         f"{root / 'fodiwalk.py'} exists: the god class came back")
     assert not (root / "models").exists(), (
         f"{root / 'models'} exists: the empty directory of D10 came back")
+
+
+def test_the_core_package_stays_deleted(root: pathlib.Path = PKG):
+    """`fodiwalk/core/` held the engine, then only the physics, and on
+    2026-08-28 `forces.py` and `plan_contract.py` moved to `fodiwalk/embed/`
+    and the empty package was deleted. The tree is the three stages of
+    `dev-docs/fodiwalk-module.md` and nothing else.
+
+    A file put back under `core/` would be a fourth home for the physics
+    that no stage boundary describes, and `augment_graph` reaching it would
+    be a second arrow to keep straight. This fails the moment one appears.
+    """
+    assert not (root / "core").exists(), (
+        f"{root / 'core'} exists: the physics has a second home again. It "
+        f"belongs in `embed/`, with the kernel that applies it.")
 
 
 def _repo_root_pkgs(root: pathlib.Path) -> set:

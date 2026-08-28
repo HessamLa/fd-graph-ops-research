@@ -1,25 +1,26 @@
 """fodiwalk.model -- `class Fodiwalk`, the user-facing model. THE WIRING ONLY.
 
 `Fodiwalk(Fodiwalk_base)` implements the whole contract: `make_graph`
-(stage 1, a STUB), `graph_walk`/`augment_graph` (stage 2 whole: `D`, the
-planes, the degrees, the force params -- `augment_graph`'s own docstring
-says why all four are stage-2 data), `forces` (stage 3, the law) and
-`embed` (`augment_graph` once, then the engine's loop). No `fit`
-(2026-08-21): `make_graph` is a stub, and `fit` promised a stage that was
-never real.
+(stage 1, a STUB), `graph_walk` (stage 2, the walks), `augment_graph` (the
+walks into `D`, then the whole of stage 3 on it), `forces` (one batch of
+the law) and `embed` (`augment_graph` once, then the engine's loop). No
+`fit` (2026-08-21): `make_graph` is a stub and `fit` promised a stage that
+was never real. THIS CLASS IS THE COMPOSITION ROOT, and the ONLY place the
+stages meet: neither `augment_graph` nor `embed` imports the other, and the
+DATA of `augment_graph.result.Augmentation` crosses (`fodiwalk-module.md`).
 
 THE ONE RULE THAT THIS CLASS EXISTS TO KEEP. The plane list comes from
-`core.forces.FORCE_PLANES`, through `augment_graph.build_planes`, and never
-an `if` chain: a missing plane RAISES and never falls back to another
-law's planes, the fallback that once read a coefficient plane as `h` and
-went to NaN with no error. `core.plan_contract` asserts it before `make_plan`.
+`embed.forces.FORCE_PLANES`, through `embed.build_planes`, and never an
+`if` chain: a missing plane RAISES and never falls back to another law's
+planes, the fallback that once read a coefficient plane as `h` and went to
+NaN with no error. `embed.plan_contract` asserts it before `make_plan`.
 
 ONE GENERATOR. `self.rng` of the base class flows walks -> far pairs ->
 link prediction -> hop sample, in that order. A second generator, a moved
 call or one more draw changes every recorded number.
 
 `embed()` CALLS `augment_graph()` ITSELF, one time. A second call embeds a
-`D` that is not the `D` the log reports, and `D.nnz` still agrees, because
+`D` that is not the `D` the log reports, and `D.nnz` still agrees because
 the pair counts are stable. Time the stage with a `train_begin` callback.
 """
 from __future__ import annotations
@@ -34,12 +35,10 @@ from forcedirected import ForceDirected
 
 from .base import Fodiwalk_base
 from .config import Config
-from .core import plan_contract
-from .core.forces import force_fn
 from .misc.drop import drop_steady_rate
-from .augment_graph import (policies, AugmentSpec, ForceSpec, build_planes,
-                            force_params, resolve_degrees)
-from .embed import PlanSpec, build_plans
+from .augment_graph import policies, AugmentSpec
+from .embed import (ForceSpec, PlanSpec, build_planes, build_plans,
+                    force_fn, force_params, plan_contract, resolve_degrees)
 
 
 class Fodiwalk(Fodiwalk_base):
@@ -131,10 +130,10 @@ class Fodiwalk(Fodiwalk_base):
         return self
 
     def augment_graph(self, G, **kwargs):
-        """Stage 2, whole: `D`, the planes, the degrees, the force params
-        -- all stage-2 DATA (`augment_graph` docstring). The plan below
-        only CONSUMES them. `G` is un-augmented, unless `set_D` skipped
-        the walks.
+        """Stage 2, then stage 3. `G` is un-augmented, unless `set_D`
+        skipped the walks. Stage 2 gives `D` and `freq`; stage 3 reads
+        them and builds the planes, the degree divisor, the force params
+        and the plan. The comment below marks the boundary.
         """
         if self._D_given is not None:
             D = self._D_given
@@ -144,6 +143,7 @@ class Fodiwalk(Fodiwalk_base):
             D = aug.D
         self.D = D
 
+        # ---- stage 3, from here down: everything that knows the law
         planes = self._build_planes(D)
         degrees = self._build_degrees(D, G)
         self.params = force_params(self.force_spec)

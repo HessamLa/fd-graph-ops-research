@@ -79,8 +79,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 import numpy as np
 
 from fodiwalk import Fodiwalk
-from fodiwalk.core import Callback_Base
-from fodiwalk.core.forces import planes_of
+from forcedirected import Callback_Base
+from fodiwalk.embed.forces import planes_of
 from fodiwalk.augment_graph import pairs as PR
 from fodiwalk.make_graph import load
 from forcedirected import optim as optimizers

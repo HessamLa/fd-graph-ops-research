@@ -106,7 +106,7 @@ def _num(x):
 def snapshot_augment(A, n, name: str, cfg: dict) -> dict:
     """Everything stage 2 builds, hashed. No embedding, thus no JAX kernel."""
     from fodiwalk import Fodiwalk
-    from fodiwalk.core.forces import planes_of
+    from fodiwalk.embed.forces import planes_of
 
     fw = Fodiwalk(n_dim=64, seed=42, **cfg)
     D = fw.augment_graph(A)

@@ -48,6 +48,15 @@ gates of section 5 measure exactly that.
 
 ## 3. The target tree
 
+**SUPERSEDED 2026-08-28.** Section 3, 3.1 and section 8 have `augment_graph`
+import `core` to ask a force law which planes and which degree divisor it
+needs. The user ruled against that reasoning: a stage only produces and
+consumes DATA, across a fixed contract, and never asks another stage a
+question (`dev-docs/fodiwalk-module.md`, "The stage contract
+(2026-08-27)"). `planes.py` and `degrees.py` moved back to `embed/`, and
+`core/` itself is deleted (`dev-docs/CATALOG.md` section 26). Kept below
+for history; do not build against it.
+
 **Section 3 is CORRECTED as of 2026-08-21.** M0-M4 built `embed/planes.py`
 and `embed/degrees.py`; the stage boundary then MOVED, and this section now
 describes the tree as it stands, not the tree of the first split. The
@@ -100,6 +109,11 @@ force-param builders live in `augment_graph/`, and the plan/kernel
 assembly in `embed/`, and neither lives in `core/`.
 
 ### 3.1 `Augmentation` -- the seam of stage 2 to stage 3
+
+**SUPERSEDED 2026-08-28**, with section 3 above: `planes`, `degrees` and
+`params` are REMOVED from `Augmentation` again. The seam is `D`, `freq`,
+`stats`, `info` and nothing else (`augment_graph/result.py`,
+`dev-docs/CATALOG.md` section 26).
 
 **Widened 2026-08-21** with `planes`, `degrees` and `params`: they are
 stage-2 output (data-preparation of the recipe), not stage-3 state, thus
@@ -269,6 +283,16 @@ whether the wiring is right.
 ---
 
 ## 8. UPDATE 2026-08-21 -- the stage boundary moves
+
+**SUPERSEDED 2026-08-28.** This entry's reasoning -- a plane and a degree
+are DATA PREPARATION of "the recipe", thus stage 2's job -- is repudiated.
+It was given in answer to a claim that "the stage that prepares the values
+has to ask the force law which values it needs"; the user ruled that no
+stage asks another stage anything (`dev-docs/fodiwalk-module.md`, "The
+stage contract (2026-08-27)"). Asking is exactly what `augment_graph/
+planes.py` did, importing `core.forces.planes_of`/`fuse` below. `planes.py`
+and `degrees.py` moved back to `embed/`, which owns the force law
+(`dev-docs/CATALOG.md` section 26). Kept below for history.
 
 **M0-M4 built `embed/planes.py` and `embed/degrees.py`.** That build is
 correct and is what sections 1-7 above describe as delivered; this entry

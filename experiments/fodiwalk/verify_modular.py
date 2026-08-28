@@ -55,8 +55,8 @@ import scipy.sparse as sp
 
 from fodiwalk import Fodiwalk, Config
 from fodiwalk.augment_graph import far_pairs as FP
-from fodiwalk.core import plan_contract
-from fodiwalk.core.forces import degrees_from_D, planes_of
+from fodiwalk.embed import plan_contract
+from fodiwalk.embed.forces import degrees_from_D, planes_of
 from fodiwalk.make_graph import load
 from fodiwalk.misc import evaluation as EV
 

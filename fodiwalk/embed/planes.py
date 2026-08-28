@@ -1,21 +1,21 @@
-"""augment_graph.planes -- the planes of a law, from a REGISTRY and not an
+"""embed.planes -- the planes of a law, from a REGISTRY and not an
 `if` chain.
 
 A plane is a `(nnz,)` array with one value for each stored pair of `D`, in
 `D`'s own pre-split CSR order. `make_plan` pads and tiles it, and the law
 unpacks the tiles POSITIONALLY. Nothing in the kernel knows the count, the
 order or the meaning of a plane, thus a wrong plane is a wrong physics and
-not an error (`core/plan_contract.py` records four such defects).
+not an error (`embed/plan_contract.py` records four such defects).
 
-THIS MODULE IS STAGE 2. `dev-docs/fodiwalk-module.md` says stage 3 does no
-graph analysis and no data preparation, and a plane IS a data-preparation
-choice: which values a law reads is a property of the RECIPE (the pair
-policy plus the law), not of the kernel that later consumes them. A
-different augmentation builds a different plane set for the same law, thus
-the plane builder moves with the augmentation and not with the kernel.
+THIS MODULE IS STAGE 3. A plane is defined by the LAW that reads it, and
+the law is stage 3, thus this builder is too. It takes the DATA stage 2
+handed over -- `D` and `freq`, with their fixed types and shapes -- and
+nothing else. It calls no function of stage 2 and stage 2 calls none of it:
+the two stages meet in `model.py` and nowhere else
+(`dev-docs/fodiwalk-module.md`).
 
 THE ONE RULE THIS MODULE KEEPS. The plane NAMES come from
-`core.forces.planes_of(law)` and never from a branch on the law. A plane
+`embed.forces.planes_of(law)` and never from a branch on the law. A plane
 that the augmentation did not build RAISES `PlaneContractError`. It never
 falls back to the planes of another law: that fallback made `fdlinear` read
 a coefficient plane as `h` on 2026-08-18, and the run went to NaN under an
@@ -24,46 +24,48 @@ a coefficient plane as `h` on 2026-08-18, and the run went to NaN under an
 THE PAIRING, which is now visible:
 
     PLANE_BUILDERS   here                    makes  the values of a plane name
-    PLANE_CHECKS     core/plan_contract.py   asserts what the name promises
+    PLANE_CHECKS     embed/plan_contract.py  asserts what the name promises
 
 To add a plane, a person edits those two tables and `FORCE_PLANES` in
-`core/forces.py`, and nothing else. The three keys must stay equal.
+`embed/forces.py`, and nothing else. The three keys must stay equal.
 
 Provenance: `Fodiwalk._build_planes` and `Fodiwalk._plane` of
 `fodiwalk/fodiwalk.py` (2026-08-20); `fodiwalk/embed/planes.py`
-(2026-08-20, the first split); moved into `augment_graph` (2026-08-21) when
-the stage boundary moved -- see `dev-docs/CATALOG.md`, the RECIPE entry.
-The error messages are verbatim across both moves.
+(2026-08-20, the first split); moved into `augment_graph` (2026-08-21) on
+the reasoning that a plane is data preparation of the recipe; moved BACK
+here (2026-08-28), because that reasoning made stage 2 call into stage 3 to
+ask a law what it reads, and the stages exchange DATA only. The error
+messages are verbatim across all three moves.
 
-Import discipline: numpy and `core` only. `augment_graph` reads `core` for
-the plane contract (`planes_of`, `fuse`, `PLANE_CHECKS`); it still imports
-NO `embed` and NO model.
+Import discipline: numpy and the sibling modules of `embed`. NO
+`augment_graph`, NO model.
 """
 from __future__ import annotations
 
 import dataclasses
 
-from ..core.forces import fuse, planes_of
-from ..core.plan_contract import PLANE_CHECKS, PlaneContractError
+from .forces import fuse, planes_of
+from .plan_contract import PLANE_CHECKS, PlaneContractError
 
 
 # ---------------------------------------------------------------------------
-# ForceSpec -- the narrow spec of the physics, read by the augmentation that
-# prepares its planes and by the kernel that consumes them.
+# ForceSpec -- the narrow spec of the physics, read by the plane builder
+# and by the kernel that consumes its planes. Both are stage 3.
 # ---------------------------------------------------------------------------
 @dataclasses.dataclass(frozen=True)
 class ForceSpec:
     """The knobs of the law, the degree divisor and the drop.
 
     `Config` stays FLAT and public; this spec is the narrowing at the seam,
-    thus a stage cannot reach a knob outside its own recipe. `from_config`
-    reads the attributes by NAME, thus this package never imports the model
+    thus a stage cannot reach a knob outside its own. `from_config` reads
+    the attributes by NAME, thus this package never imports the model
     layer.
 
-    `edge_rule` is a pair-policy knob and it is here for ONE reason: the
+    `edge_rule` names a pair-policy knob and it is here for ONE reason: the
     `auto` degree source reads it (see `degrees.resolve_degrees`). A
     `low_deg` edge rule can empty the `h = 1` entries of a hub, thus the
-    degree must then come from `A`.
+    degree must then come from `A`. It is a COPY of a value, read by name
+    from the flat `Config`, and never a call into stage 2.
     """
 
     force: str = "fdlinear"
@@ -95,9 +97,8 @@ class ForceSpec:
 def force_params(spec: ForceSpec) -> dict:
     """The traced scalars the law reads. `params` of `forcedirected.step`.
 
-    The kernel only APPLIES these; it never chooses them. Choosing them is
-    part of the recipe, thus this stays beside `build_planes` and not in
-    the kernel-consuming stage.
+    The kernel only APPLIES these; it never chooses them. Choosing them
+    belongs to the LAW, thus this stays beside `build_planes`.
     """
     return dict(k1=spec.k1, k4=spec.k4, kr=spec.kr, sign=spec.fdlinear_sign)
 
@@ -142,7 +143,7 @@ assert set(PLANE_BUILDERS) == set(PLANE_CHECKS)
 def build_planes(law: str, D, freq, pairs=None, policy=None) -> tuple:
     """The planes of `law`, in the order the registry gives.
 
-    `law`     a key of `core.forces.FORCE_PLANES`.
+    `law`     a key of `embed.forces.FORCE_PLANES`.
     `D`       the augmented matrix. `D.data` is the `h` plane.
     `freq`    the `(nnz,)` frequency data aligned to `D.indices`, or None.
     `pairs`,
@@ -159,6 +160,6 @@ def build_planes(law: str, D, freq, pairs=None, policy=None) -> tuple:
         if build is None:
             raise PlaneContractError(
                 f"{law} declares a plane `{name}` that this class cannot "
-                f"build. Add it here and to core.forces.FORCE_PLANES together.")
+                f"build. Add it here and to embed.forces.FORCE_PLANES together.")
         out.append(build(D, freq, law, pairs, policy))
     return tuple(out)

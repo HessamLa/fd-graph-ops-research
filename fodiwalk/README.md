@@ -6,6 +6,17 @@ A graph goes in. Random walks turn it into a weighted matrix `D`. A force
 law relaxes an embedding `Z` against `D`. The layout, not a loss, carries
 the structure.
 
+Three stages, one contract between them (`dev-docs/fodiwalk-module.md`,
+"The stage contract"):
+
+- `make_graph` -- loads data, builds the graph. Gives `A`, a symmetric CSR.
+- `augment_graph` -- walks the graph, builds pairs and weights. Gives an
+  `Augmentation`: `D`, `freq`, `stats`, `info`.
+- `embed` -- consumes that data ONLY, applies the force law, relaxes `Z`.
+
+No stage calls or reads another. What crosses a boundary is DATA, fixed in
+type and shape.
+
 Run everything through the project interpreter:
 
 ```bash
@@ -157,12 +168,11 @@ Three rules the builder must keep, and each one has already cost a run:
 `ForceDirectedEmbedding` between 2026-08-21, when
 `make_graph`/`augment_graph`/`fit` left it, and 2026-08-26 --
 `dev-docs/CATALOG.md` sections 21 and 23). The class itself lives in the
-ROOT package `forcedirected`, which `fodined` reads too; `fodiwalk.core`
-re-exports the name, thus either import below works. Subclass it directly
-when you already have `D` and need only a new force law:
+ROOT package `forcedirected`, which `fodined` reads too. Subclass it
+directly when you already have `D` and need only a new force law:
 
 ```python
-from fodiwalk.core import ForceDirected
+from forcedirected import ForceDirected
 
 class MyModel(ForceDirected):
     def forces(self, Z, D, row_start, row_end, **kw): ...   # -> (rows, d)
@@ -189,10 +199,9 @@ kind of subclass, walk-based.
 | `config.py` | `Config` -- every knob, FLAT and public |
 | `base.py` | `class Fodiwalk_base` -- the pipeline CONTRACT, every stage abstract |
 | `model.py` | `class Fodiwalk(Fodiwalk_base)` -- the three stages, WIRED. Nothing else |
-| `core/` | the engine (`ForceDirected`), the layout, the physics, the asserter. `force_directed.py`, `sell_c_sigma.py` and `csr.py` FORWARD to the root package `forcedirected` |
 | `make_graph/` | stage 1, the datasets |
-| `augment_graph/` | stage 2, the walks, the pair policies, the planes and the degrees |
-| `embed/` | stage 3, CONSUMPTION ONLY: the chunked plan and the jitted kernel wiring |
+| `augment_graph/` | stage 2, the walks, the pair policies, the weights. It knows no force law |
+| `embed/` | stage 3, CONSUMPTION ONLY: the force laws, the plane contract, the chunked plan and the jitted kernel wiring |
 | `misc/` | the update rules, the drop, the measurements |
 | `tests/` | contracts, smoke, golden, api, parity |
 | `dev-docs/` | PRD, ORCHESTRATION, CATALOG, BUILD, REFACTOR |
@@ -200,26 +209,36 @@ kind of subclass, walk-based.
 **The dependency runs ONE WAY, and a cycle is a defect.** Four rules:
 
 ```
-core            imports core only. It never learns about `Config`.
+forcedirected   imports nothing of this repository. The engine.
 make_graph      imports numpy and scipy.
-augment_graph   imports numpy, scipy, core (the plane/degree contract). NO embed, NO model.
-embed           imports core only. NO augment_graph, NO model.
-model.py        imports config, make_graph, augment_graph, embed, core, misc.
+augment_graph   imports numpy, scipy and its own modules. NOTHING else.
+embed           imports forcedirected and its own modules. NO augment_graph.
+model.py        imports config, make_graph, augment_graph, embed, misc.
 ```
 
-`core` may not read a configuration, and that is why the plane, degree and
-force-param builders live in `augment_graph/` and the plan assembly in
-`embed/`, and neither is in `core/`. A plane and a degree are DATA the
-recipe (one pair policy plus one law) prepares, not kernel state
-(`dev-docs/fodiwalk-module.md`; `dev-docs/CATALOG.md` section 20 -- they
-moved here from `embed/` on 2026-08-21). No module imports a `_private`
-name of another module. `tests/test_structure.py` and
+**Stage 2 and stage 3 do not import each other, in either direction.**
+Stage 2 PRODUCES and stage 3 CONSUMES, across a fixed data contract, and
+neither calls a function of the other. What crosses is
+`augment_graph.result.Augmentation` -- `D`, `freq`, `stats`, `info` -- with
+fixed types and shapes (`dev-docs/fodiwalk-module.md`). `model.py` carries
+it across: it is the composition root and it belongs to neither stage.
+
+Both directions are asserted, because one of them was live code until
+2026-08-28. `augment_graph/planes.py` imported the law to ask which planes
+it reads and `augment_graph/degrees.py` imported `degrees_from_D`; both
+files went back to `embed/`, where the law is, and `fodiwalk/core/` was
+emptied and deleted in the same change. No module imports a `_private` name
+of another module. `tests/test_structure.py` and
 `tests/test_contracts.py` assert every rule above with the `ast` module,
 thus the next change either keeps the shape or fails.
 
 ---
 
-## `core/`
+## the engine, in `forcedirected/`
+
+The ROOT package beside `fodiwalk`, shared with `fodined`. It was
+`fodiwalk/core/` until 2026-08-26; `fodiwalk/core/` then held forwarders
+and, from 2026-08-28, nothing at all, and it is deleted.
 
 ### `force_directed.py` -- `ForceDirected`, `Callback_Base`
 
@@ -239,7 +258,7 @@ Events, in order: `train_begin`, then per epoch `epoch_begin`, per batch
 `batch_begin` / `batch_end`, `epoch_end`, then `train_end`.
 
 ```python
-from fodiwalk.core import Callback_Base
+from forcedirected import Callback_Base
 
 class Watch(Callback_Base):
     def on_epoch_end(self, model, **kw):
@@ -254,63 +273,6 @@ Replace the integrator by overriding `updateZ`, or dispatch to a rule:
 fw.set_rule("velocity", lr=0.1, eta=0.3)
 fw.lr_schedule = lambda lr, ep, eps: lr * (1 - ep / eps)   # linear decay
 ```
-
-### `forces.py` -- the laws, and `FORCE_PLANES`
-
-The laws, the plane builders, and the registry that says which law reads
-which planes, in what order.
-
-| law | planes | attraction |
-| --- | --- | --- |
-| `fdlinear` | `(h, freq)` | `h <= 1` only |
-| `fdlinear_fused` | `(w,)` | `w < 0` |
-
-Add a law. When it reuses the plane names that exist, NOTHING else needs an
-edit -- that is what the registry is for:
-
-```python
-import jax.numpy as jnp
-from fodiwalk.core import forces
-
-def fdsquare(x, planes, params):
-    h, freq = planes
-    live, near = h > 0, h <= 1
-    Fa = jnp.where(near & live, params["k1"] * x * x, 0.0)
-    coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
-    return Fa + jnp.where(live, -coeff * jnp.exp(-params["k4"] * x), 0.0)
-
-forces.FORCE_PLANES["fdsquare"] = ("h", "freq")
-forces.FORCE_FN["fdsquare"] = fdsquare
-
-fw = Fodiwalk(n_dim=64, force="fdsquare", pairs="nbr_walk")
-```
-
-A law returns the force MAGNITUDE along `u -> v`. The kernel applies the
-direction, the degree division and the padding guards.
-
-A law that needs a NEW plane needs two more edits, and the error message
-names both: an entry in `augment_graph.planes.PLANE_BUILDERS` that builds
-the values, and a validator in `plan_contract.PLANE_CHECKS` that states
-what the name promises. The two tables must hold the same keys, and
-`planes.py` asserts that at import. The plane builder lives in
-`augment_graph/`, not `embed/`: it is data preparation for the recipe (one
-augmentation policy plus one law), and `embed/` only ever consumes it
-(`dev-docs/CATALOG.md` section 20).
-
-### `plan_contract.py` -- the asserter
-
-The one new module of the package. It asserts the plane contract at the
-seam, and it RAISES: a missing or wrong plane is never a reason to run
-other physics.
-
-```python
-plan_contract.check("fdlinear", (freq, h), D)   # RAISES: h is not D.data
-```
-
-A plane name is a promise about the values, thus a swap is caught even
-though the COUNT is right. `check_degrees` catches a row that would freeze;
-`check_plan` catches a pad cell that would push. Turn them off for a very
-large run with `check_planes=False, check_padding=False`.
 
 ### `sell_c_sigma.py` -- the layout. No physics.
 
@@ -358,8 +320,6 @@ Point it elsewhere with `FDMAP_DATA=/path .venv/bin/python ...`.
 | `policy_buckets.py` | `policy = buckets` on the undirected pairs |
 | `policy_nbr_walk.py` | `nbr_walk`: directed rows, and its `cap` and `buckets` axes |
 | `merge.py` | `add_far_pairs` -- the ONE far/`freq` CSR merge. `drop_pairs_of` -- the far filter of `nbr_walk` |
-| `planes.py` | `PLANE_BUILDERS`, `build_planes`, `ForceSpec`, `force_params` -- the law's DATA (moved from `embed/` 2026-08-21) |
-| `degrees.py` | `resolve_degrees` -- the divisor of the row sum (moved from `embed/` 2026-08-21) |
 | `walks.py` | `uniform_walks`, `node2vec_walks`, `make_walker`, `walk_rows`, `walk_pair_stats`, the neighbour merges |
 | `pairs.py` | the pair key, `cap_per_node`, `row_cap`, the CSR builds |
 | `weights.py` | `flat`, `min_gap`, `mean_gap`, `pmi` -- the walk statistics into `h` |
@@ -379,19 +339,127 @@ from fodiwalk.augment_graph.result import AugmentSpec
 
 spec = AugmentSpec.from_config(Config(pairs="nbr_walk"))
 aug = build(A, n, spec, np.random.default_rng(42))
-aug.D, aug.freq, aug.stats, aug.info      # a policy's own build() fills these
-aug.planes, aug.degrees, aug.params       # None here; Fodiwalk fills them once
-                                          # the law is known -- see below
+aug.D, aug.freq, aug.stats, aug.info      # the WHOLE seam to stage 3
 ```
+
+That is everything stage 2 hands over, and it is DATA. Stage 2 names no
+force law, imports no `embed`, and asks stage 3 nothing. `Augmentation`
+also carried `planes`, `degrees` and `params` between 2026-08-21 and
+2026-08-28; the three are stage-3 things and they are gone.
 
 **THE ORDER OF THE COO TRIPLES IS PART OF THE RESULT.** `add_far_pairs`
 writes the near entries, then the forward pairs, then the backward pairs.
 `sp.csr_matrix` SUMS a duplicate coordinate and the sum order decides the
 last bit. Do not sort and do not group.
 
+---
+
+## `embed/`
+
+Stage 3, CONSUMPTION ONLY (`dev-docs/fodiwalk-module.md`): "This stage
+shall not do any graph analysis or data preparation. It must only consume
+the data." It takes the `D`, the planes, the degrees and the force params
+It receives the DATA of `Augmentation` -- `D`, whose `D.data` holds the `h`
+values, and the `(nnz,)` `freq` aligned to `D.indices` -- and builds the
+planes, the degree divisor, the force params, the chunked plan and the
+jitted steps the kernel of `forcedirected` runs.
+
+EVERYTHING THAT KNOWS A FORCE LAW IS HERE, since 2026-08-28. A plane, a
+degree divisor and a force param are all defined by the law that reads
+them. `forces.py` and `plan_contract.py` came from `fodiwalk/core/`, which
+is deleted; `planes.py` and `degrees.py` came back from `augment_graph/`,
+where building a plane meant asking a law what it reads -- and that
+question was an import from stage 2 into stage 3.
+
+| module | what it does |
+| --- | --- |
+| `forces.py` | the laws, `FORCE_PLANES`, `FORCE_FN`, `degrees_from_D` |
+| `plan_contract.py` | the asserter of the plane contract. It RAISES |
+| `planes.py` | `PLANE_BUILDERS`, `build_planes`, `ForceSpec`, `force_params` |
+| `degrees.py` | `resolve_degrees` -- the divisor of the row sum |
+| `planner.py` | `PlanSpec`, `PlanSet`, `build_plans` -- the chunked plan |
+
+`Fodiwalk.augment_graph` is the composition root: it takes the stage-2
+data and runs the whole of stage 3 on it, with `build_plans` last:
+
+```python
+from fodiwalk.embed import (ForceSpec, PlanSpec, build_planes, build_plans,
+                            force_fn, force_params, plan_contract,
+                            resolve_degrees)
+
+fspec, pspec = ForceSpec.from_config(cfg), PlanSpec.from_config(cfg)
+planes = build_planes(fspec.law, D, freq, cfg.pairs, cfg.policy)
+degrees = resolve_degrees(D, A, fspec)
+plan_contract.check(fspec.law, planes, D)          # I1, I2, I4
+plan_contract.check_degrees(degrees, D)            # I5
+params = force_params(fspec)
+plan_set = build_plans(D, planes, degrees, pspec, force_fn(fspec.law))
+```
+
+`D` and `freq` are the only things that came from stage 2, and they arrived
+as DATA. Nothing above calls into `augment_graph`.
+
+### A chunk is a ROW RANGE
+
+`build_plans` gives `PlanSpec.chunks` plans, one for the rows `[a, b)` of
+each. The whole plan of a million-node graph does not fit beside `Z` and
+`dZ` on a 2 GB card, thus the device holds ONE chunk at a time
+(`chunk_host=True` keeps them in the host memory).
+
+A chunk is never a set of pairs: the kernel writes `dZ.at[rows].add(...)`,
+thus only DISJOINT rows make the parts additive. The global quantities stay
+global -- `degrees` is counted over the whole `D`, and a chunk only slices
+the planes.
+
+```python
+plan_set.plans, plan_set.steps          # one plan and one jitted step each
+plan_set.inv_deg_ext, plan_set.chunk_rows
+plan_set.resident, plan_set.stats       # -> fw.plan_stats
+```
+
+### `forces.py` -- the laws, and `FORCE_PLANES`
+
+The laws, the plane builders, and the registry that says which law reads
+which planes, in what order.
+
+| law | planes | attraction |
+| --- | --- | --- |
+| `fdlinear` | `(h, freq)` | `h <= 1` only |
+| `fdlinear_fused` | `(w,)` | `w < 0` |
+
+Add a law. When it reuses the plane names that exist, NOTHING else needs an
+edit -- that is what the registry is for:
+
+```python
+import jax.numpy as jnp
+from fodiwalk.embed import forces
+
+def fdsquare(x, planes, params):
+    h, freq = planes
+    live, near = h > 0, h <= 1
+    Fa = jnp.where(near & live, params["k1"] * x * x, 0.0)
+    coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
+    return Fa + jnp.where(live, -coeff * jnp.exp(-params["k4"] * x), 0.0)
+
+forces.FORCE_PLANES["fdsquare"] = ("h", "freq")
+forces.FORCE_FN["fdsquare"] = fdsquare
+
+fw = Fodiwalk(n_dim=64, force="fdsquare", pairs="nbr_walk")
+```
+
+A law returns the force MAGNITUDE along `u -> v`. The kernel applies the
+direction, the degree division and the padding guards.
+
+A law that needs a NEW plane needs two more edits, and the error message
+names both: an entry in `embed.planes.PLANE_BUILDERS` that builds the
+values, and a validator in `plan_contract.PLANE_CHECKS` that states what
+the name promises. The two tables must hold the same keys, and `planes.py`
+asserts that at import. All three files are in `embed/`, and a new law
+therefore touches stage 3 alone.
+
 ### The planes come from a REGISTRY
 
-`build_planes` walks `core.forces.planes_of(law)` and takes the builder of
+`build_planes` walks `embed.forces.planes_of(law)` and takes the builder of
 each name from `PLANE_BUILDERS`. There is NO branch on the law name. A
 plane that the augmentation did not build RAISES, with the name of the
 plane and the name of the law -- it never falls back to the planes of
@@ -399,7 +467,7 @@ another law. That fallback made `fdlinear` read a coefficient plane as `h`,
 and the run went to NaN under an `fdlinear` label with no error.
 
 ```python
-from fodiwalk.augment_graph import ForceSpec, build_planes, force_params
+from fodiwalk.embed import ForceSpec, build_planes, force_params
 
 fspec = ForceSpec.from_config(cfg)
 planes = build_planes(fspec.law, D, freq, cfg.pairs, cfg.policy)
@@ -419,7 +487,7 @@ a hub, thus `deg_source="auto"` reads `edge_rule` and takes the degree from
 `A` instead.
 
 ```python
-from fodiwalk.augment_graph import resolve_degrees
+from fodiwalk.embed import resolve_degrees
 
 degrees = resolve_degrees(D, A, fspec, explicit=None)
 ```
@@ -484,58 +552,20 @@ first epoch, thus a new rule cannot repeat it in silence. The repair, when
 a rule genuinely has no `h = 1`, is an explicit degree:
 `Fodiwalk(weight=..., deg_source="A")`.
 
----
+### `plan_contract.py` -- the asserter
 
-## `embed/`
-
-Stage 3, CONSUMPTION ONLY (`dev-docs/fodiwalk-module.md`): "This stage
-shall not do any graph analysis or data preparation. It must only consume
-the data." It takes the `D`, the planes, the degrees and the force params
-that `augment_graph/` already prepared, and builds the chunked plan and the
-jitted steps the kernel of `core` runs. It builds NO plane and resolves NO
-degree -- `dev-docs/CATALOG.md` section 20 says why they left in
-2026-08-21.
-
-| module | what it does |
-| --- | --- |
-| `planner.py` | `PlanSpec`, `PlanSet`, `build_plans` -- the chunked plan |
-
-`Fodiwalk.augment_graph` assembles the whole recipe, and `build_plans` is
-its last, CONSUMING step:
+The one new module of the package. It asserts the plane contract at the
+seam, and it RAISES: a missing or wrong plane is never a reason to run
+other physics.
 
 ```python
-from fodiwalk.core import plan_contract
-from fodiwalk.core.forces import force_fn
-from fodiwalk.augment_graph import (ForceSpec, build_planes, force_params,
-                                    resolve_degrees)
-from fodiwalk.embed import PlanSpec, build_plans
-
-fspec, pspec = ForceSpec.from_config(cfg), PlanSpec.from_config(cfg)
-planes = build_planes(fspec.law, D, freq, cfg.pairs, cfg.policy)   # augment_graph
-degrees = resolve_degrees(D, A, fspec)                             # augment_graph
-plan_contract.check(fspec.law, planes, D)          # I1, I2, I4
-plan_contract.check_degrees(degrees, D)            # I5
-params = force_params(fspec)                                       # augment_graph
-plan_set = build_plans(D, planes, degrees, pspec, force_fn(fspec.law))  # embed
+plan_contract.check("fdlinear", (freq, h), D)   # RAISES: h is not D.data
 ```
 
-### A chunk is a ROW RANGE
-
-`build_plans` gives `PlanSpec.chunks` plans, one for the rows `[a, b)` of
-each. The whole plan of a million-node graph does not fit beside `Z` and
-`dZ` on a 2 GB card, thus the device holds ONE chunk at a time
-(`chunk_host=True` keeps them in the host memory).
-
-A chunk is never a set of pairs: the kernel writes `dZ.at[rows].add(...)`,
-thus only DISJOINT rows make the parts additive. The global quantities stay
-global -- `degrees` is counted over the whole `D`, and a chunk only slices
-the planes.
-
-```python
-plan_set.plans, plan_set.steps          # one plan and one jitted step each
-plan_set.inv_deg_ext, plan_set.chunk_rows
-plan_set.resident, plan_set.stats       # -> fw.plan_stats
-```
+A plane name is a promise about the values, thus a swap is caught even
+though the COUNT is right. `check_degrees` catches a row that would freeze;
+`check_plan` catches a pad cell that would push. Turn them off for a very
+large run with `check_planes=False, check_padding=False`.
 
 ---
 
@@ -574,7 +604,7 @@ row; `random_cells` zeroes single cells. They are different regularizers.
 
 `link_prediction` (does the geometry hold the ADJACENCY?), `hop_sample`
 and `task_hop` (does it hold the DISTANCE?). Measurement, not engine:
-nothing in `core` imports it.
+nothing in `embed` imports it.
 
 `link_prediction` is the Hadamard product `Z[u] * Z[v]` into a random
 forest, verbatim from `fodined/link_prediction.py`.
