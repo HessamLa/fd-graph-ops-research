@@ -20,8 +20,21 @@ Two caps, and they are not interchangeable:
   `row_cap`       row `u` keeps its own best `m`, thus EVERY row has the
                   same width. It runs on a directed key only.
 
-Provenance: every function is a verbatim move from
-`experiments/fdwalk/walks.py`. Only the location changed.
+A THIRD carrier lives in `rows.py`, not here, because a fourth module of
+this file would sit past `tests/test_structure.py`'s 300-line cap:
+`RowStats`, a ROW-BLOCKED form (`indptr`/`col`/`mn`/`cnt`, the layout a CSR
+already keeps in `indptr`/`indices`) that `nbr_walk` uses in place of the
+one-array `key` (`row * n + col`) this file's forms use, and `RowCSR`, the
+plain (not `scipy.sparse`) container `nbr_walk` builds `D` and `freq` as.
+`row_cap`, below, reads and returns `RowStats` -- it is the one function
+here that crosses into that carrier -- see `rows.py`'s module docstring
+for why, and for the memory the split moves.
+
+Provenance: `split_key`, `to_csr`, `to_csr_directed`, `cap_per_node` and
+`row_cap` are a verbatim move from `experiments/fdwalk/walks.py`, only the
+location changed. `row_cap` was widened 2026-08-28
+(`agentic-log/10.mem-agent/`) to read and return `rows.RowStats` in place
+of a flat `key`/`mn`/`cnt` dict.
 
 Every function is pure, and it prints nothing.
 """
@@ -29,6 +42,8 @@ from __future__ import annotations
 
 import numpy as np
 import scipy.sparse as sp
+
+from .rows import RowStats
 
 
 def split_key(key, n: int):
@@ -107,7 +122,7 @@ def cap_per_node(key, cnt, n: int, m: int):
 # which the split of 2026-08-19 moved to their own files. See
 # `experiments/fdwalk/TODOs.md` and `dev-docs/CATALOG.md`.
 # ---------------------------------------------------------------------------
-def row_cap(stats, n: int, m: int):
+def row_cap(stats: RowStats, n: int, m: int) -> RowStats:
     """Keep the `m` most-visited partners of EACH ROW. Directed.
 
     This is the directed form of `cap_per_node`, and the two differ in a
@@ -126,11 +141,20 @@ def row_cap(stats, n: int, m: int):
     row-disjoint, thus no direction has to be recovered and no accumulator
     is doubled. `_pairs_of` cannot be used for this: it collapses the
     direction at the source with the key `min*n + max`.
+
+    Widened 2026-08-28 to read and return `RowStats` in place of the flat
+    `key`/`mn`/`cnt` dict: `row` here plays the part `key // n` played, and
+    the result comes back as a fresh `RowStats` with `indptr` rebuilt from
+    the kept counts. `row_cap` defaults to OFF (`spec.row_cap = 0`), so it
+    is not the array this task's peak-memory fix targets; it still pays the
+    O(nnz) `row` array `walk_rows` no longer builds by default, exactly as
+    it did before this change, because ranking "the best `m` of a row"
+    needs every row's members compared at once.
     """
-    if m <= 0 or stats["key"].size == 0:
+    if m <= 0 or stats.col.size == 0:
         return stats
-    row = (stats["key"] // n).astype(np.int64)
-    order = np.lexsort((-stats["cnt"].astype(np.int64), row))
+    row = stats.row                                    # was `key // n`
+    order = np.lexsort((-stats.cnt.astype(np.int64), row))
     row_s = row[order]
     first = np.ones(row_s.size, dtype=bool)
     first[1:] = row_s[1:] != row_s[:-1]
@@ -138,5 +162,8 @@ def row_cap(stats, n: int, m: int):
     glen = np.diff(np.append(starts, first.size))
     rank = np.arange(row_s.size, dtype=np.int64) - np.repeat(starts, glen)
     keep = np.sort(order[rank < m])
-    return {k: (v[keep] if isinstance(v, np.ndarray) else v)
-            for k, v in stats.items()}
+    counts = np.bincount(row[keep], minlength=n)
+    indptr = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(counts, out=indptr[1:])
+    return RowStats(indptr, stats.col[keep], stats.mn[keep], stats.cnt[keep],
+                    n, **stats.extra)

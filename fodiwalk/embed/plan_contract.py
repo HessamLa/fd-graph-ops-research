@@ -61,7 +61,6 @@ No line of a body changed.
 from __future__ import annotations
 
 import numpy as np
-import scipy.sparse as sp
 
 from .forces import FORCE_PLANES, planes_of
 
@@ -135,7 +134,13 @@ def check(law: str, planes, D) -> None:
         _fail(f"{law} reads {len(names)} planes {names}, and it got "
               f"{len(planes)} (I2). The kernel unpacks POSITIONALLY, thus "
               f"a wrong count is a wrong law, not a warning.")
-    nnz = int(D.nnz) if sp.issparse(D) else int(np.count_nonzero(D))
+    # `nbr_walk` builds `D` as a plain `augment_graph.rows.RowCSR`
+    # (2026-08-28), not a `scipy.sparse.csr_matrix` -- `sp.issparse` is
+    # False for it, and the ORIGINAL check here fell to `np.count_nonzero`,
+    # the DENSE branch, which does not know what to do with it. `.nnz` is
+    # what both a real sparse matrix and `RowCSR` carry; a genuine dense
+    # `ndarray` has neither, so it still takes the `count_nonzero` branch.
+    nnz = int(D.nnz) if hasattr(D, "nnz") else int(np.count_nonzero(D))
     for i, (name, p) in enumerate(zip(names, planes)):
         p = np.asarray(p)
         if p.shape != (nnz,):

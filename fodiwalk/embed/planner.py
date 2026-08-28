@@ -89,13 +89,22 @@ def build_plans(D, planes, degrees, spec: PlanSpec, force_fn) -> PlanSet:
     plans, steps, cells = [], [], 0
     stats = None
     inv_deg_ext = None
+    # ONE scratch buffer for the padded per-chunk `indptr`, reused for
+    # every chunk instead of a fresh `np.zeros(n + 1)` each time: at
+    # 1.13M nodes over 8 chunks that was eight (n + 1) allocations, ~72 MB
+    # of churn, to hold data `make_plan` reads and returns from before the
+    # next chunk starts. `Dc` is a loop-local variable that nothing keeps
+    # past this iteration -- `make_plan`'s OWN `D = to_csr(Dc)` is a no-op
+    # (`Dc` is already a CSR) and everything it reads from `indptr` is
+    # consumed before `make_plan` returns -- so overwriting the buffer on
+    # the next iteration is safe.
+    scratch = np.zeros(n + 1, dtype=D.indptr.dtype)
     for a in range(0, n, chunk_rows):
         b = min(a + chunk_rows, n)
         lo, hi = int(D.indptr[a]), int(D.indptr[b])
-        indptr = np.zeros(n + 1, dtype=D.indptr.dtype)
-        indptr[a + 1:b + 1] = D.indptr[a + 1:b + 1] - lo
-        indptr[b + 1:] = indptr[b]
-        Dc = sp.csr_matrix((D.data[lo:hi], D.indices[lo:hi], indptr),
+        np.subtract(D.indptr, lo, out=scratch)
+        np.clip(scratch, 0, hi - lo, out=scratch)
+        Dc = sp.csr_matrix((D.data[lo:hi], D.indices[lo:hi], scratch),
                            shape=D.shape)
         plan, inv_deg_ext, stats = make_plan(
             Dc, tuple(p[lo:hi] for p in planes), degrees=degrees,

@@ -4,7 +4,10 @@ A stored entry `D[u, v] = h >= 1` is a distance. The walks make the pairs,
 `weights.py` turns the walk statistics into `h`, `pairs.py` caps them and
 builds the CSR, `buckets.py` and `far_pairs.py` choose which pairs survive
 and which long-range pairs are added, and `landmarks.py` gives the far
-pairs a real distance in place of one constant.
+pairs a real distance in place of one constant. `nbr_walk` carries its
+pairs as `rows.RowStats` instead, and merges `A`'s edges into them in
+`row_merge.py` -- both split out of `pairs.py`/`walks.py` on 2026-08-28,
+under `tests/test_structure.py`'s line caps; see their own docstrings.
 
 Every policy here is WALK-BASED. `h` is a walk GAP -- an upper bound of the
 hop distance -- and never a measured distance. The exact-distance policies
@@ -44,9 +47,10 @@ from __future__ import annotations
 
 from .pairs import (split_key, to_csr, to_csr_directed, cap_per_node,
                     row_cap)
+from .rows import RowStats, RowCSR, to_csr_directed_rows, assert_row_sorted
 from .walks import (uniform_walks, node2vec_walks, make_walker,
-                    walk_pair_stats, walk_rows, with_all_neighbours,
-                    with_neighbours_low_deg)
+                    walk_pair_stats, walk_rows)
+from .row_merge import with_all_neighbours, with_neighbours_low_deg
 from .weights import RULES as WEIGHT_RULES
 from .buckets import bucket_sample, budget, row_buckets
 from .far_pairs import degree_table, sample_far_pairs
@@ -57,6 +61,7 @@ from .policies import POLICIES, build, graph_walk
 
 __all__ = [
     "split_key", "to_csr", "to_csr_directed", "cap_per_node", "row_cap",
+    "RowStats", "RowCSR", "to_csr_directed_rows", "assert_row_sorted",
     "uniform_walks", "node2vec_walks", "make_walker", "walk_pair_stats",
     "walk_rows", "with_all_neighbours", "with_neighbours_low_deg",
     "WEIGHT_RULES", "bucket_sample", "budget", "row_buckets",

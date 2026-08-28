@@ -32,6 +32,31 @@ THREE INVARIANTS OF THIS FILE. Each one is a recorded defect.
    `min * n + max`. A directed form doubles the accumulator, which stopped
    three runs at 1.13M nodes.
 
+A FOURTH, added 2026-08-28: `walk_rows` now emits `rows.RowStats`, a
+ROW-BLOCKED carrier (`indptr`/`col`/`mn`/`cnt`), and NOT the one-array
+`key` (`row * n + col`) it used until then; `with_all_neighbours` and
+`with_neighbours_low_deg`, which read and extend that carrier, moved to
+`row_merge.py` the same day (to keep this file under
+`tests/test_structure.py`'s 422-line cap). Measured at 150,000 nodes of
+com_youtube, default `nbr_walk` (`walks=10, walk_len=20`):
+
+    peak RSS through the augmentation      3067 MB
+    resting result (`D` + `freq.data`)      495 MB   (6.2x the peak/rest gap)
+
+Stage by stage, the OLD code: `walk_rows`'s final `np.concatenate` of its
+per-block lists cost +414 MB (rss 1166 -> peak 1580); `with_all_neighbours`
+alone cost +1707 MB more (peak 3067), almost all of it ONE `np.argsort`
+over 26M already-sorted keys, plus the four-array gather its permutation
+forced. Both walk output and `A`'s own CSR are ALREADY sorted by
+`(row, col)` -- `walk_rows` reduces block by block in row order, and a
+CSR keeps `indices` ascending inside a row -- so neither the concatenate
+nor the sort was buying anything. `walk_rows` now pre-sizes its output
+once the walk is done and copies each block in, freeing the block as it
+goes, instead of holding the whole list alive through one `concatenate`;
+`row_merge.py`'s functions merge `stats` with `A`'s edges ROW BLOCK BY ROW
+BLOCK, with `np.searchsorted` finding where an edge falls and where every
+kept entry lands in the merged order -- no `argsort` at any size.
+
 Provenance: a verbatim move from `experiments/fdwalk/walks.py`. The pair
 keys, the caps and the CSR build moved to `pairs.py`; the row-wise bucket
 rule moved to `buckets.py`. Only `make_walker` has a changed body, and the
@@ -46,9 +71,9 @@ from __future__ import annotations
 import functools
 
 import numpy as np
-import scipy.sparse as sp
 
 from .pairs import cap_per_node
+from .rows import RowStats
 
 
 def uniform_walks(A, starts, walk_len: int, rng):
@@ -199,12 +224,31 @@ def walk_rows(A, n: int, n_walks: int, walk_len: int, rng,
     walks of that row, thus it is the same minimum-gap estimator as before,
     and it is still an upper bound of the hop distance.
 
-    Returns `key`, `mn`, `cnt`, and `raw`. `cnt` is how many times the row
-    reached that node, which `weights.py` and the `fdlinear` force read as
-    the frequency of the node in the walks of that row.
+    Returns a `RowStats` (`indptr`/`col`/`mn`/`cnt`, plus `raw`); see its
+    docstring. `cnt` is how many times the row reached that node, which
+    `weights.py` and the `fdlinear` force read as the frequency of the
+    node in the walks of that row.
+
+    2026-08-28: `col` is `int32`, `mn` is `int16` (`h` fits `1 .. walk_len -
+    1`), `cnt` is `int32` -- explicitly, since `np.add.reduceat` widens an
+    int32 input to int64 and `_reduce` (below) still does that for
+    `walk_pair_stats`, which this function must not disturb. The block
+    loop below therefore casts its OWN output right after `_reduce`
+    returns, block by block, never touching `_reduce` itself.
+
+    The blocks are collected in a list, as before -- each block already
+    holds only ITS OWN rows' pairs after `_reduce`, thus the list's total
+    size is the same across the whole loop either way. What changed is the
+    step after the loop: the old code called `np.concatenate(keys)`, which
+    holds the WHOLE list alive while it also builds the new array (the
+    +414 MB spike this docstring's numbers name). This function instead
+    pre-sizes the output from the row counts, then copies each block in
+    and drops it immediately, so the block list and the output array are
+    never both complete at the same time.
     """
     walker = walker or (lambda st, L, r: uniform_walks(A, st, L, r))
-    keys, mns, cnts = [], [], []
+    col_blocks, mn_blocks, cnt_blocks = [], [], []
+    counts = np.zeros(n, dtype=np.int64)
     raw = 0
     for s in range(0, n, block):
         e = min(s + block, n)
@@ -219,74 +263,26 @@ def walk_rows(A, n: int, n_walks: int, walk_len: int, rng,
         raw += src.size
         key = src * n + dst                  # DIRECTED: the row is the start
         k, mn, sm, cnt = _reduce(key, gap, gap, np.ones(key.size, np.int32))
-        keys.append(k); mns.append(mn); cnts.append(cnt)
-        del w, src, dst, gap, key
-    if not keys:
-        return {"key": np.empty(0, np.int64), "mn": np.empty(0, np.int32),
-                "cnt": np.empty(0, np.int32), "raw": 0}
-    return {"key": np.concatenate(keys), "mn": np.concatenate(mns),
-            "cnt": np.concatenate(cnts), "raw": raw}
-
-
-def with_neighbours_low_deg(stats, A, n: int):
-    """Every edge, stored ONE time, in the row of the lower-degree node.
-
-    The rule of 2026-08-17: for an edge `(u, v)`, `v` enters the row of `u`
-    only when `deg(v) >= deg(u)`. Thus a leaf keeps its edge to a hub, and
-    the hub does not keep the same edge in its own row. An edge between two
-    nodes of the same degree enters both rows.
-
-    The gain is the memory: an edge costs one entry and not two. At 1.13M
-    nodes that is 5,975,248 entries against 2,987,624.
-
-    The reason it is safe to drop the hub side: the row of a hub already
-    holds hundreds of partners, thus one more says little about where the
-    hub belongs. The row of a leaf holds few, thus every one of them
-    matters. The force stays reciprocal in the SUM over the graph, because
-    the leaf still pulls the hub through its own row.
-
-    A WARNING, and it is the reason `deg_source` exists in the caller: a
-    hub can now hold NO entry at `h = 1`. `degrees_from_D` counts the
-    entries at `h = 1`, thus it would return 0 for that row, and
-    `inv_deg_ext` turns a 0 into 0.0, which zeroes EVERY force of the row,
-    the repulsion too. The node would never move. The caller must therefore
-    give `make_plan` the true degree of `A`, and not the count of `D`.
-    """
-    c = sp.triu(A, k=1).tocoo()
-    deg = np.diff(A.indptr)
-    du, dv = deg[c.row], deg[c.col]
-    # (row, col) when deg(col) >= deg(row), and the other way when it is <=
-    keep_fwd = dv >= du
-    keep_bwd = du >= dv
-    src = np.concatenate([c.row[keep_fwd], c.col[keep_bwd]])
-    dst = np.concatenate([c.col[keep_fwd], c.row[keep_bwd]])
-    ekey = src.astype(np.int64) * n + dst.astype(np.int64)
-    key = np.concatenate([stats["key"], ekey])
-    mn = np.concatenate([stats["mn"], np.ones(ekey.size, np.int32)])
-    cnt = np.concatenate([stats["cnt"], np.ones(ekey.size, np.int32)])
-    k, mn, _sm, cnt = _reduce(key, mn, mn, cnt)
-    return {"key": k, "mn": mn, "cnt": cnt, "raw": stats.get("raw", 0),
-            "edges_kept": int(ekey.size)}
-
-
-def with_all_neighbours(stats, A, n: int):
-    """Add EVERY edge of `A` at `h = 1`, and keep the walk pairs.
-
-    The specification says that no neighbour may be missing. A walk finds
-    most of them and not all: at 1.13M nodes the walks of the earlier
-    policy held 68% of the directed edges. This function closes that gap by
-    construction, thus the count of `h = 1` entries EQUALS `A.nnz`.
-
-    An edge that a walk also found keeps `h = 1`, which is the minimum, thus
-    the merge cannot raise a distance.
-    """
-    c = A.tocoo()
-    ekey = c.row.astype(np.int64) * n + c.col.astype(np.int64)
-    key = np.concatenate([stats["key"], ekey])
-    mn = np.concatenate([stats["mn"], np.ones(ekey.size, np.int32)])
-    cnt = np.concatenate([stats["cnt"], np.ones(ekey.size, np.int32)])
-    k, mn, _sm, cnt = _reduce(key, mn, mn, cnt)
-    return {"key": k, "mn": mn, "cnt": cnt, "raw": stats.get("raw", 0)}
+        row_local = k // n - s
+        counts[s:e] = np.bincount(row_local, minlength=e - s)
+        col_blocks.append((k - (k // n) * n).astype(np.int32))
+        mn_blocks.append(mn.astype(np.int16))
+        cnt_blocks.append(cnt.astype(np.int32))
+        del w, src, dst, gap, key, k, mn, sm, cnt, row_local
+    indptr = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(counts, out=indptr[1:])
+    total = int(indptr[-1])
+    col = np.empty(total, dtype=np.int32)
+    mn = np.empty(total, dtype=np.int16)
+    cnt = np.empty(total, dtype=np.int32)
+    pos = 0
+    while col_blocks:
+        c, m, k = col_blocks.pop(0), mn_blocks.pop(0), cnt_blocks.pop(0)
+        end = pos + c.size
+        col[pos:end], mn[pos:end], cnt[pos:end] = c, m, k
+        pos = end
+        del c, m, k
+    return RowStats(indptr, col, mn, cnt, n, raw=raw)
 
 
 def _edge_keys(A, n: int):

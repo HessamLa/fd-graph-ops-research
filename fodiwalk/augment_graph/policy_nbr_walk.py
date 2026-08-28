@@ -21,10 +21,11 @@ import numpy as np
 from . import merge
 from .buckets import budget, row_buckets
 from .far_pairs import degree_table, sample_far_pairs
-from .pairs import row_cap, to_csr_directed
+from .pairs import row_cap
 from .result import Augmentation
-from .walks import (make_walker, walk_rows, with_all_neighbours,
-                    with_neighbours_low_deg)
+from .row_merge import with_all_neighbours, with_neighbours_low_deg
+from .rows import assert_row_sorted, to_csr_directed_rows
+from .walks import make_walker, walk_rows
 
 
 def row_stats(A, n: int, spec, rng):
@@ -64,28 +65,45 @@ SELECT = {"cap": select_all, "buckets": select_buckets}
 # -- the frequency plane ----------------------------------------------------
 def freq_pair(stats, n: int):
     """How many times the row reached that node."""
-    return stats["cnt"].astype(np.float64)
+    return stats.cnt.astype(np.float64)
 
 
 def freq_node(stats, n: int):
-    """How many times the node was reached, over every row."""
-    visits = np.bincount(stats["key"] % n, weights=stats["cnt"], minlength=n)
-    return visits[stats["key"] % n]
+    """How many times the node was reached, over every row.
+
+    `stats["key"] % n` was the node id (the low bits of the directed key);
+    `stats.col` IS that id already, with no key to build to reach it.
+    """
+    visits = np.bincount(stats.col, weights=stats.cnt, minlength=n)
+    return visits[stats.col]
 
 
 FREQ_MODES = {"pair": freq_pair, "node": freq_node}
 
 
 def build(A, n: int, spec, rng) -> Augmentation:
-    """Stage 2 by the `nbr_walk` policy."""
+    """Stage 2 by the `nbr_walk` policy.
+
+    2026-08-28 (`agentic-log/10.mem-agent/`): `stats` is a `rows.RowStats`
+    the whole way through -- `row_stats`, `row_cap`, the neighbour rule and
+    the select stage all read and return it -- and `D`/`freq` build
+    straight from its `indptr`/`col`, with no COO step, no sort, and no
+    `key` array. `D` and `freq` are `rows.RowCSR`, a plain object and not
+    a `scipy.sparse.csr_matrix` (see its docstring): nothing downstream of
+    this function calls a scipy MATRIX method on `D`, only its five plain
+    attributes, so the container itself carries no memory this task did
+    not ask it to. The far-pair path (`spec.far > 0`) is unchanged: it
+    already goes through real `scipy.sparse` via `RowCSR.tocoo()`, and
+    `D`/`freq` become real `sp.csr_matrix` there, exactly as before.
+    """
     t0 = time.time()
     info = {"walk_order": 1 if (spec.p == 1.0 and spec.q == 1.0) else 2}
 
     stats = row_stats(A, n, spec, rng)
     if spec.row_cap:
-        info["walk_pairs_before_rowcap"] = int(stats["key"].size)
+        info["walk_pairs_before_rowcap"] = int(stats.col.size)
         stats = row_cap(stats, n, spec.row_cap)
-        info["walk_pairs_after_rowcap"] = int(stats["key"].size)
+        info["walk_pairs_after_rowcap"] = int(stats.col.size)
     stats = NEIGHBOUR_RULES.get(spec.edge_rule, with_all_neighbours)(
         stats, A, n)
     stats, report = SELECT.get(spec.policy, select_all)(
@@ -93,19 +111,27 @@ def build(A, n: int, spec, rng) -> Augmentation:
     info.update(report)
     info["prunes"] = 0
     info["raw_pairs"] = int(stats["raw"])
-    info["unique_pairs"] = int(stats["key"].size)
-    info["capped_pairs"] = int(stats["key"].size)
+    info["unique_pairs"] = int(stats.col.size)
+    info["capped_pairs"] = int(stats.col.size)
     info["t_pairs"] = time.time() - t0
 
-    h = stats["mn"].astype(np.float64)
-    D = to_csr_directed(stats["key"], h, n)
+    assert_row_sorted(stats.indptr, stats.col)          # trap 5
+    h = stats.mn.astype(np.float64)
+    D = to_csr_directed_rows(stats.indptr, stats.col, h, n)
     info["near_nnz"] = int(D.nnz)
     info["h1_entries"] = int((D.data == 1).sum())
     info["edges_of_A"] = int(A.nnz)
-    # `freq`, on the SAME sparsity, thus the two `.data` arrays match entry
-    # by entry after the CSR build.
+    # `freq` shares D's OWN `indptr`/`indices` -- the SAME arrays, not a
+    # copy -- thus the row-blocked structure is held once and not twice.
+    # 99 MB at 150,000 nodes; ~750 MB at 1.13M.
     counts = FREQ_MODES.get(spec.freq_mode, freq_pair)(stats, n)
-    freq = to_csr_directed(stats["key"], counts.astype(np.float64), n)
+    # `copy=False`: both `freq_pair` and `freq_node` already return
+    # float64, thus a plain `.astype(np.float64)` here (the pre-2026-08-28
+    # code) COPIED an array that needed no cast -- another ~198 MB at
+    # 150,000 nodes, invisible against the COO build it used to sit beside
+    # and the single biggest number left once that build was removed.
+    freq = to_csr_directed_rows(D.indptr, D.indices,
+                                counts.astype(np.float64, copy=False), n)
     info["far_pairs"] = 0
     info["far_asked"] = 0
 
@@ -122,5 +148,5 @@ def build(A, n: int, spec, rng) -> Augmentation:
             info["near_nnz"] = int(D.nnz)
 
     info["t_aug"] = time.time() - t0
-    return Augmentation(D=D, freq=freq.data, stats=dict(stats, freq=freq),
-                        info=info)
+    return Augmentation(D=D, freq=freq.data,
+                        stats=stats.with_extra(freq=freq), info=info)

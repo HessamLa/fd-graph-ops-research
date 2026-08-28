@@ -2385,3 +2385,122 @@ with section 26.
 "The stage contract (2026-08-27)", [augment_graph/result.py](../augment_graph/result.py),
 [dev-docs/CATALOG.md](CATALOG.md) section 26,
 [dev-docs/REFACTOR.md](REFACTOR.md) sections 3, 3.1, 8.
+
+## 28. UPDATE 2026-08-28 -- `RowStats` and `RowCSR`, the row-blocked carrier of `nbr_walk`
+
+**What it is.** The task: `nbr_walk`'s augmentation peaked at 3067 MB to
+build a 495 MB result at 150,000 nodes of com_youtube (6.2x), which killed
+the run at the real size, 1,134,890 nodes, on a 15 GB machine. Two new
+types replace the one-array carrier the pair (`key = row * n + col`) and
+the `D`/`freq` container (`scipy.sparse.csr_matrix`) used before:
+
+  `RowStats`  a ROW-BLOCKED carrier -- `indptr`/`col`/`mn`/`cnt`, the
+              layout a CSR already keeps in `indptr`/`indices`. Row `u`'s
+              partners are `col[indptr[u]:indptr[u+1]]`, ascending, no
+              duplicate. `col` is int32, `mn` is int16 (`h` fits
+              `1 .. walk_len - 1`), `cnt` is int32. `key` is NOT stored;
+              a reader that still wants it (`golden.py`'s digest,
+              `check_api.py`) gets it through `stats["key"]`, built ONLY
+              on that ask.
+  `RowCSR`    a plain object holding `D`/`freq`'s `indptr`/`indices`/
+              `data`/`shape`, and not a `scipy.sparse.csr_matrix`. Every
+              real consumer -- `forcedirected.sell_c_sigma.make_plan`
+              (through a chunk-local rebuild), `embed.degrees.
+              resolve_degrees`, `embed.plan_contract.check` -- touches
+              only those attributes and `.nnz`; nothing calls a scipy
+              MATRIX method (`.dot`, `@`, `.T`, `.getrow()`) on `D`.
+              `.tocoo()` wraps into a real `sp.csr_matrix` for the ONE
+              reader that needs scipy's own duplicate-summing COO build
+              (`merge.add_far_pairs`, `far > 0` only).
+
+**How it works.** Three changes, each one value-preserving (same numbers,
+less memory to hold them at once):
+
+1. `walk_rows` emits `RowStats` directly, pre-sizing its output once the
+   walk is done instead of `np.concatenate`-ing a list of per-block
+   arrays (that concatenate held the whole list AND the new array at
+   once: +414 MB at 150,000 nodes).
+2. `row_merge.py`'s `_merge_row_edges` merges `RowStats` with `A`'s edges
+   ROW BLOCK BY ROW BLOCK, with `np.searchsorted` finding a hit and
+   placing every kept entry at its final rank -- a merge of two ALREADY
+   SORTED sequences (walk output is row/col sorted by construction; a
+   CSR's `indices` are sorted inside a row) needs no `argsort`. The old
+   code's ONE global `np.argsort` over 26M keys cost +1707 MB, almost all
+   of it the sort's permutation array and the four-array gather it forced.
+3. `rows.to_csr_directed_rows` builds `D` (and then `freq`, from `D`'s
+   OWN `indptr`/`indices` -- the SAME array objects) with
+   `RowCSR(indptr, col, val, shape)` directly: no COO, no sort, no second
+   copy of the sparsity structure (99 MB at 150,000 nodes; ~750 MB at
+   1.13M, avoided).
+
+```python
+# rows.py
+class RowStats:
+    __slots__ = ("indptr", "col", "mn", "cnt", "n", "extra")
+    # indptr: int64 (n+1); col: int32 (nnz); mn: int16 (nnz); cnt: int32 (nnz)
+
+class RowCSR:
+    __slots__ = ("indptr", "indices", "data", "shape")
+    @property
+    def nnz(self): return self.data.size
+    def tocoo(self): ...  # the one scipy crossing, for far > 0
+```
+
+**Result, measured at 150,000 nodes of com_youtube, default `nbr_walk`
+(`walks=10, walk_len=20`), the production path
+(`augment_graph.policies.build`, sampled the same way the pre-fix number
+was):**
+
+| measure | before | after |
+| --- | --- | --- |
+| peak RSS | 3067 MB | 1154-1158 MB |
+| resting (`D` + `freq.data`) | 495 MB | 495 MB (unchanged) |
+| peak / resting | 6.2x | 2.33x |
+
+**The stretch goal, met and not merely attempted.** The real reason this
+mattered: at the full size, 1,134,890 nodes, the pre-fix peak
+extrapolated to ~23 GB against 15 GB of RAM, and the process died before
+it stored anything. After the fix, the full com_youtube augmentation
+(default `nbr_walk`, `walks=10, walk_len=20`) completes in 82.5 s, `D.nnz
+= 145,222,742`, peak RSS **4626 MB** -- comfortably inside a 6 GB budget.
+
+`golden.py`'s digest hashes an array's dtype along with its bytes, thus
+two representation choices needed care to stay byte-exact rather than
+becoming a re-record:
+
+  * `RowStats["mn"]`/`["cnt"]` widen back to the pre-fix dtype (`int32`,
+    `int64`) ONLY on `__getitem__` -- a compatibility view for
+    `golden.py`/`check_api.py`, never taken on the hot path, since the
+    STORED object holds the narrow dtype.
+  * `to_csr_directed_rows` narrows `indptr` to `int32` when `nnz` and `n`
+    both fit (true at every size this project reaches) to match what
+    `sp.csr_matrix((data, (row, col)))` already chose -- `RowStats.indptr`
+    itself stays `int64` throughout the merge.
+
+A dead end worth recording: a redundant `counts.astype(np.float64)` in
+`policy_nbr_walk.build` (present before this task, invisible beside the
+COO build it used to sit next to) became the single largest remaining
+cost once the COO build and the global sort were gone -- +198 MB, a
+second copy of an array `freq_pair`/`freq_node` already returned as
+`float64`. Fixed with `copy=False`.
+
+**Scope.** `nbr_walk` only (`policy_nbr_walk.py`, `row_merge.py`,
+`rows.py`, and `pairs.row_cap`). `walk`/`walk_edges`
+(`policy_walk.py`, `walk_pair_stats`, `pairs.to_csr`/`to_csr_directed`)
+keep the flat `key` and a real `scipy.sparse.csr_matrix`, untouched. The
+far-pair path (`merge.add_far_pairs`, `far > 0`) is untouched: it depends
+on `scipy.sparse` summing a duplicate COO coordinate, and `RowCSR.tocoo()`
+is exactly the one crossing that lets it stay that way.
+
+**Adopted at.** 2026-08-28, `agentic-log/10.mem-agent/`.
+
+**Provenance.** [augment_graph/rows.py](../augment_graph/rows.py),
+[augment_graph/row_merge.py](../augment_graph/row_merge.py),
+[augment_graph/pairs.py](../augment_graph/pairs.py) (`row_cap`),
+[augment_graph/walks.py](../augment_graph/walks.py) (`walk_rows`),
+[augment_graph/policy_nbr_walk.py](../augment_graph/policy_nbr_walk.py)
+(`build`), [embed/plan_contract.py](../embed/plan_contract.py) (the
+`sp.issparse` -> `hasattr(D, "nnz")` dispatch fix `RowCSR` needed),
+[embed/planner.py](../embed/planner.py) (`build_plans`'s reused per-chunk
+scratch buffer), [tests/mem.py](../tests/mem.py) (the memory gate),
+`agentic-log/10.mem-agent/`.

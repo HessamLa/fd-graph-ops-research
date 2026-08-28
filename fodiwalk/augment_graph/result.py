@@ -25,6 +25,8 @@ import dataclasses
 import numpy as np
 import scipy.sparse as sp
 
+from .rows import RowCSR, RowStats
+
 
 @dataclasses.dataclass
 class Augmentation:
@@ -33,11 +35,21 @@ class Augmentation:
     `D.data` IS the `h` value of each stored pair. Stage 3 reads these four
     fields and builds its own planes, degrees and force params from them;
     stage 2 neither knows nor names a force law.
+
+    `D` is a `scipy.sparse.csr_matrix` on the `walk`/`walk_edges` policies.
+    `nbr_walk` builds a plain `rows.RowCSR` instead (2026-08-28,
+    `agentic-log/10.mem-agent/`) -- no consumer of `D` calls a scipy MATRIX
+    method on it, only `.indptr`/`.indices`/`.data`/`.shape`/`.nnz`, which
+    `RowCSR` gives for less memory and no validation pass. `far > 0` still
+    ends in a real `sp.csr_matrix`, through `RowCSR.tocoo()`
+    (`merge.add_far_pairs`). `stats` is a plain `dict` on `walk`/
+    `walk_edges` and a `rows.RowStats` on `nbr_walk`, for the same reason
+    (`RowStats`'s own docstring).
     """
 
-    D: sp.csr_matrix
+    D: sp.csr_matrix | RowCSR
     freq: np.ndarray | None     # (nnz,), aligned to `D.indices`, or None
-    stats: dict                 # the walk statistics, plus `freq` as a CSR
+    stats: dict | RowStats      # the walk statistics, plus `freq`
     info: dict                  # the counts and the timings a log prints
 
 

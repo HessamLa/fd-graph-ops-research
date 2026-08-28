@@ -27,10 +27,14 @@ proportions are the experiment.
 """
 # Provenance: moved from `experiments/fdwalk/buckets.py` on 2026-08-19.
 # `bucket_sample` and `budget` are verbatim; `row_buckets` came from
-# `experiments/fdwalk/walks.py`, body unchanged.
+# `experiments/fdwalk/walks.py`. Its RETURN changed 2026-08-28 to rebuild
+# `RowStats` instead of indexing a flat dict (`pairs.py`'s module
+# docstring, `agentic-log/10.mem-agent/`); the draw itself did not change.
 from __future__ import annotations
 
 import numpy as np
+
+from .rows import RowStats
 
 FRACTIONS = (0.50, 0.25, 0.25)          # h == 2, h == 3, h >= 4
 
@@ -82,8 +86,15 @@ def row_buckets(stats, A, n: int, total: int, rng,
 
     `walk_rows` gives `h` in `mn`, thus the strata read from `mn` directly
     and no hop distance has to be recomputed.
+
+    2026-08-28: `stats` is a `rows.RowStats` (row-blocked `indptr`/`col`,
+    not the flat `key`). The bucket draw itself is unchanged -- it picks
+    among GLOBAL positions, not rows -- only the return changed: `indptr`
+    is rebuilt from the row of every kept position (`RowStats.rows_of`,
+    one `searchsorted` and not an `(nnz,)` array), so the result stays a
+    valid row-blocked carrier.
     """
-    h = stats["mn"]
+    h = stats.mn
     near = h <= 1
     far = np.flatnonzero(h >= 2)
     groups = (far[h[far] == 2], far[h[far] == 3], far[h[far] >= 4])
@@ -95,6 +106,10 @@ def row_buckets(stats, A, n: int, total: int, rng,
         report.append({"bucket": name, "available": int(idx.size),
                        "asked": int(w), "taken": int(take.size)})
     sel = np.sort(np.concatenate(keep))
-    out = {k: (v[sel] if isinstance(v, np.ndarray) else v)
-           for k, v in stats.items()}
+    row = stats.rows_of(sel)
+    counts = np.bincount(row, minlength=n)
+    indptr = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(counts, out=indptr[1:])
+    out = RowStats(indptr, stats.col[sel], stats.mn[sel], stats.cnt[sel],
+                   n, **stats.extra)
     return out, report
