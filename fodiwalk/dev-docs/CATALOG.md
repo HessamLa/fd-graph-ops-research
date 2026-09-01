@@ -2504,3 +2504,132 @@ is exactly the one crossing that lets it stay that way.
 [embed/planner.py](../embed/planner.py) (`build_plans`'s reused per-chunk
 scratch buffer), [tests/mem.py](../tests/mem.py) (the memory gate),
 `agentic-log/10.mem-agent/`.
+
+## 29. UPDATE 2026-08-29 -- the streaming strategy, the effective-learning-rate law, and generalised momentum
+
+Three entities, all from the work of 2026-08-28 and 2026-08-29. The full
+measurements and the reasoning are in
+`experiments/fodiwalk-streaming/FINDINGS.md`; this section names them and
+says what they are.
+
+### 29.1 STREAMING augmentation -- a strategy, beside `precomputed`
+
+**What it is.** The pair data of a node is built, used for that node's
+gradient, and DISCARDED, inside every epoch. `D` is never built and
+nothing of size `nnz` is ever live. The alternative, and the only strategy
+before this, is **precomputed**: walk once, aggregate once, reuse for
+every epoch.
+
+**How it works.** For a batch of nodes: walk from those nodes only, fuse
+each node's walks into three flat arrays (partner id, min hop `h`,
+frequency), take the gradient for those rows, update them, drop the rest.
+
+```python
+u_loc, v, h, freq = rows_of(A, nodes, n, n_walks, walk_len, rng)
+F = row_forces(Z, nodes[u_loc], u_loc, v, h, freq, inv_deg, b)
+Z = Z.at[nodes].add(lr * F)          # immediate, per batch
+```
+
+**Two things it changes, and both are the strategy and not defects.** The
+walks are FRESH in every epoch, so it optimises a stochastic sample and
+not one fixed `D`. The update is IMMEDIATE per batch, so row `u` moves
+before row `u + 1` is computed -- Gauss-Seidel, where the precomputed path
+is Jacobi. Whether the two converge to the same place is NOT established.
+
+**What it costs and buys.** The peak is one BATCH plus `Z`, so it does not
+track graph size: 922 MB at 2,708 nodes and 2,749 MB at 1,696,415 nodes
+with 11,095,298 edges -- a 626x larger graph for 3.0x the memory. It does
+NOT win on small graphs (1,523 MB against the precomputed path's 1,467 MB
+at 150,000 nodes) because the JAX runtime floor of ~790 MB swamps the
+data. It pays only once `D` would dominate. The cost is recomputation: the
+walks are paid EVERY epoch.
+
+Provenance: `experiments/fodiwalk-streaming/bench_stream.py`;
+`REPORT.md` for the 14-run campaign; `FINDINGS.md` sections 6 and 7.
+
+### 29.2 The EFFECTIVE LEARNING RATE, and the stability edge at 1.0
+
+**What it is.** The force-directed method converges when
+`lim(x->inf) f(x)/x < 1.0`. The operational form of that condition, for an
+update rule with an accumulator:
+
+    effective lr = lr x the DC gain of the rule,   the edge is 1.0
+
+**The gains.** `plain`, `sgd` and `velocity` have gain 1. `momentum`
+(`m = beta*m + dZ`) has gain `1/(1-beta)`, which is **10** at the default
+`beta = 0.9`. `nesterov` accumulates the same way and has the same gain.
+`fa2` caps its per-node speed at `k_max = 10.0`, so its gain reaches 10
+as well. `adam` and `sqn` rescale adaptively and have no fixed gain.
+
+**Why it matters.** It explains every divergence on record and it
+predicted a new one. `momentum` at `lr = 0.1` works because
+`0.1 x 10 = 1.0` exactly; at 0.9, 0.999 and 1.0 the effective rate is 9 to
+10 and every run gave `nan`. The law was checked against 16 recorded
+outcomes with no misses, then predicted `fa2`'s failure from a mechanism
+it had never seen -- `fa2` at `lr = 0.999` died at epoch 15 on pubmed with
+891,520 non-finite values, and it runs at `lr = 0.0999`.
+
+**The rule this gives (project owner, 2026-08-29).** **No learning rate is
+ever 1.0.** 0.999 or less, and a decay schedule starts at 0.999 or less.
+It binds the EFFECTIVE rate too, so a gain-10 rule needs `lr < 0.1`.
+`fodiwalk`'s own default of `lr = 1.0` and the streaming campaign of
+2026-08-28 predate this rule.
+
+Provenance: `forcedirected/optim.py` (`step_velocity`'s docstring already
+records the gain difference between `momentum` and `velocity`);
+`FINDINGS.md` section 8.
+
+### 29.3 GENERALISED MOMENTUM -- `m = beta*m + alpha*dZ`
+
+**What it is.** The momentum rule with a gain on `dZ`. The stored rule
+fixes `alpha = 1`.
+
+```python
+m = beta * m + alpha * F          # DC gain = alpha / (1 - beta)
+Z = Z + lr * m                    # effective lr = lr * alpha / (1 - beta)
+```
+
+**The identity it exposes.** `alpha + beta = 1` gives gain 1 and IS
+`velocity`: `step_velocity(eta)` is exactly `alpha = eta`,
+`beta = 1 - eta`. `alpha + beta < 1` gives gain below 1 and damps.
+`alpha + beta > 1` amplifies, and the stored default `alpha = 1,
+beta = 0.9` sums to 1.9 with gain 10.
+
+**Measured**, cora, 50 epochs, `lr = 1.0`, streaming:
+
+| config | a+b | gain | eff lr | dz | max abs Z | accuracy |
+| --- | --- | --- | --- | --- | --- | --- |
+| `plain` | -- | 1.00 | 1.00 | 10.9 | 119 | 0.9735 |
+| a=1.0 b=0.9 | 1.90 | 10.0 | 10.0 | 1.11e9 | 6.0e10 | 0.8916 |
+| a=0.5 b=0.4 | 0.90 | 0.833 | 0.833 | 10.3 | 114 | 0.9740 |
+
+The classic rule blows up by eight orders of magnitude. `alpha = 0.5,
+beta = 0.4` lands beside `plain` and slightly ahead on accuracy. It did
+NOT reach `nan` under streaming, so a finite-check does not catch it --
+`dz` is the honest signal.
+
+Provenance: `experiments/fodiwalk-streaming/bench_stream.py`
+(`apply_update`); `FINDINGS.md` section 8.
+
+### 29.4 The decay schedule REVERSES between the two strategies
+
+Not a new entity, a property of the existing `lr_decay = "linear"`
+schedule (`fodiwalk/model.py:84`, `lr_t = lr * (1 - epoch/epochs)`).
+
+On the PRECOMPUTED path it was the biggest single lever, and it rescued
+exactly the runs whose step was too large: on pubmed at `lr = 0.999`,
+`adam` 0.219 -> 0.517, `sgd` 0.275 -> 0.496, `plain` 0.288 -> 0.494, each
+of which had `dz > 1` without it. The already-stable rules gained nothing.
+
+On the STREAMING path it HURTS, and it hurts all six rules tested:
+`nesterov` -0.119, `adam` -0.100, `sgd` -0.092, `plain` -0.089,
+`velocity` -0.081, `fa2` -0.028 in hop R2. The effect is the same size at
+50 and at 200 epochs, so it is not an under-training artefact -- that
+confound was the reason the 200-epoch arm was run. Streaming already
+injects noise through fresh walks in every epoch and does not need
+annealing.
+
+**Thus a schedule proven on one strategy must be re-proven on the other.**
+
+Provenance: `experiments/fodiwalk-streaming/optim_pubmed.tsv`;
+`FINDINGS.md` section 9.

@@ -1,0 +1,1 @@
+STREAM	graph=com_youtube	n=1134890	dim=64	walks=5	walk_len=20	batch=1024	epochs=5	t_load=5.2	t_embed=582.8	t_total=588.0	pairs=386261499	peak_rss=1876
