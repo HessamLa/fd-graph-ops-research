@@ -30,6 +30,16 @@ Use ASD-STE100.
 Avoid verbose language and lengthy sentences. Keep your responses concise and 
 precise, with accurate and descriptive words. Generate short but information dense sentenses.
 
+## Experiments
+
+Embeddings with less than 5 epochs are used mainly for memory usage and runtime evaluations. If bad metrics are evaluated, they may be disregarded. From low-epochs embeddings, no generalized conclusion shall be derived other than memory usage and runtime.
+
+Embeddings with 10 to 15 epochs may be used to provide directions about which combinations to not pursue or to drop. With 10 epochs embeddings, we'd avoid a direction if we see more than 5% underperformance compared to the mean.
+
+Only embeddings with more than 50 epochs can be used to provide generalized claims. 
+
+To solidify a generalized claim, we'd run a 200 epochs embedding, and evaluate at 50 epochs intervals, i.e. at epoch 50, 100, 150, and 200.
+
 ## Coding
 
 Use minimalistic architectures and structures.
