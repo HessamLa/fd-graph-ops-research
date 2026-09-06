@@ -309,7 +309,7 @@ print("[fdwalk] RESULT\t" + "\t".join(f"{k}={v}" for k, v in [
     ("t_aug", f"{t_aug:.1f}"), ("t_embed", f"{t_embed:.1f}"),
     ("dz", f"{float(fdobj.Th(fdobj.dZ)):.4f}"),
     ("acc", f"{lp.scores['accuracy']:.4f}"),
-    ("f1", f"{lp.scores['f1']:.4f}"),
+    ("f1_score", f"{lp.scores['f1_score']:.4f}"),
     ("auc", f"{lp.scores['auc']:.4f}"),
     ("r2_dist", f"{hop['distance'].scores['mlp']['r2']:.3f}"),
     ("mae_dist", f"{hop['distance'].scores['mlp']['mae']:.3f}"),
