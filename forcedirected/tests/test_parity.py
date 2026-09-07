@@ -1,7 +1,7 @@
 """test_parity.py -- the gates that keep the kernel the same algorithm.
 
 These outlive milestone 2. They name NO old module: after the unification
-`fodined/embedding/sell_c_sigma.py` and `fodiwalk/core/sell_c_sigma.py`
+`fodiwalk/core/sell_c_sigma.py`
 forward here, thus a comparison against them would be a comparison against
 this file and would pass for the wrong reason. The one-time old-against-new
 evidence is `../PARITY.md`, made by `m1_old_vs_new.py`.
@@ -36,14 +36,15 @@ def cora():
 
 
 def plan_inputs(A):
-    from fodined.embedding.shell_force import shell_coeff_data, degrees_from_D
+    from forcedirected.tests.reference.shell_force import (
+        shell_coeff_data, degrees_from_D)
     return (shell_coeff_data(A), A.data), degrees_from_D(A)
 
 
 def max_owner_multiplicity(plan, n: int) -> int:
     """The largest count of one real owner id inside ONE batch. 3 or more
     makes that batch's scatter nondeterministic on the GPU (see
-    `experiments/fdwalk/FINDINGS.md` lines 1100-1182)."""
+    `archive/fdwalk/FINDINGS.md` lines 1100-1182)."""
     worst = 0
     for rung in plan:
         for batch in np.asarray(rung[0]):
@@ -117,7 +118,7 @@ def test_step_is_exact_on_cora_where_the_scatter_is_deterministic():
     import jax
     import jax.numpy as jnp
     import functools
-    from fodined.embedding.shell_force import shell_force
+    from forcedirected.tests.reference.shell_force import shell_force
 
     A, n = cora()
     planes, deg = plan_inputs(A)

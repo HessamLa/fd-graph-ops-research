@@ -89,7 +89,7 @@ def test_p1_fdlinear_on_cora_200_epochs(cora):
         assert out["plan"]["pad_frac"] == pytest.approx(0.20059361671282838)
         assert out["dz"] == pytest.approx(0.5016, abs=5e-5)
         assert out["acc"] == pytest.approx(0.9754, abs=5e-5)
-        assert out["f1"] == pytest.approx(0.9752, abs=5e-5)
+        assert out["f1_score"] == pytest.approx(0.9752, abs=5e-5)
         assert out["auc"] == pytest.approx(0.9962, abs=5e-5)
         assert out["r2_dist"] == pytest.approx(0.253, abs=5e-4)
         assert out["mae_dist"] == pytest.approx(1.291, abs=5e-4)

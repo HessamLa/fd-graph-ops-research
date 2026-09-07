@@ -9,7 +9,7 @@ this file stays only as the record of how the numbers were made.
 What it does NOT do: assert bit equality of a long run. A hub row that the
 plan splits gives several virtual rows ONE owner id, thus
 `dZ.at[rows].add` accumulates in a nondeterministic order and float32
-addition is not associative. See `experiments/fdwalk/FINDINGS.md` lines
+addition is not associative. See `archive/fdwalk/FINDINGS.md` lines
 1100-1182. The threshold is 3 addends on one address INSIDE one batch. The
 script MEASURES that multiplicity and asserts exactness only where it is
 below 3.
@@ -21,6 +21,9 @@ This is the one file of `forcedirected/` that imports `fodined` and
 `fodiwalk`, and it is deliberate: the comparison it ran needed both. It is
 a record and not a gate -- no module of this package imports it, and pytest
 does not collect it -- thus the package's import rule is not touched.
+
+
+CANNOT RUN SINCE 2026-09-06. This script compares the kernel against `fodined.embedding.sell_c_sigma`, and commit `ea9ae67` removed `fodined`. It is kept as the record of what the unification was checked against; the frozen law it used now lives at `forcedirected/tests/reference/shell_force.py`, but the OLD KERNEL it compared against is only in git history.
 """
 from __future__ import annotations
 

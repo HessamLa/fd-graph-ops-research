@@ -1,9 +1,9 @@
 """harness.py -- one recorded run, end to end, on the package.
 
-`run(**cfg)` does what `experiments/fdwalk/bench_fdwalk.py` does, in the
+`run(**cfg)` does what `archive/fdwalk/bench_fdwalk.py` does, in the
 same ORDER and with the same generator, and it gives back the fields of the
 `RESULT` line. `test_parity.py` compares those fields to the numbers that
-`experiments/fdwalk/RESULTS.md` and `FINDINGS.md` recorded.
+`archive/fdwalk/RESULTS.md` and `FINDINGS.md` recorded.
 
 THE ORDER OF THE GENERATOR IS PART OF THE PARITY. The script makes ONE
 `np.random.default_rng(seed)` and it passes that one generator to the
@@ -80,7 +80,7 @@ def run(A, n, *, dim=64, epochs=200, lr=1.0, seed=42, optim="plain",
         best[feature] = (hop.scores["mlp"]["r2"], hop.scores["mlp"]["mae"])
         hop_pairs_kept = int(hop.sizes["n_pairs"])
 
-    out.update(acc=lp.scores["accuracy"], f1=lp.scores["f1"],
+    out.update(acc=lp.scores["accuracy"], f1_score=lp.scores["f1_score"],
                auc=lp.scores["auc"], r2_dist=best["distance"][0],
                mae_dist=best["distance"][1], r2_vec=best["vector"][0],
                lp_pairs=int(lp.sizes["pairs"]), hop_pairs=hop_pairs_kept)
@@ -89,7 +89,7 @@ def run(A, n, *, dim=64, epochs=200, lr=1.0, seed=42, optim="plain",
 
 def result_line(out) -> str:
     """The fields a log holds, in one line. For a report, and for a diff."""
-    keys = ("n", "dnnz", "dz", "acc", "f1", "auc", "r2_dist", "mae_dist",
+    keys = ("n", "dnnz", "dz", "acc", "f1_score", "auc", "r2_dist", "mae_dist",
             "r2_vec", "diverged")
     return "\t".join(f"{k}={out[k]:.4f}" if isinstance(out.get(k), float)
                      else f"{k}={out.get(k)}" for k in keys)

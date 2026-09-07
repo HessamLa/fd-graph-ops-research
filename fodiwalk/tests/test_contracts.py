@@ -63,7 +63,7 @@ def test_b1_engine_package_imports_nothing_of_this_repository():
     the engine that reads them, and `fodiwalk/core/csr.py` stayed as a
     forwarder until 2026-08-27. The contract widened with the move: EVERY
     module of `forcedirected` imports numpy, scipy, jax and its own
-    modules, and no package of this repository. That is what lets `fodined`
+    modules, and no package of this repository. That is what let `fodined`
     and `fodiwalk` share the engine without either depending on the other.
 
     `tests/` is excluded: `m1_old_vs_new.py` is a closed record that names
@@ -407,7 +407,7 @@ def test_b7_link_prediction_caps_and_never_samples_a_stored_edge(cora):
     Z = np.random.default_rng(1).normal(size=(n, 8))
     scores, info = link_prediction(Z, A, n, max_pairs, rng, seed=0)
     assert info["pairs"] <= max_pairs
-    assert set(scores) == {"accuracy", "precision", "recall", "f1-score",
+    assert set(scores) == {"accuracy", "precision", "recall", "f1_score",
                            "auc"}
 
 
@@ -461,7 +461,7 @@ def test_the_nbr_walk_policy_stores_no_far_pair_it_already_holds(tiny):
     """`sample_far_pairs` rejects on the keys AS STORED, thus on a directed
     `near` a pair held as (v, u) passed and the CSR build SUMMED the two:
     the weight became 100 + the walk gap, and the histogram showed entries
-    at 101..119. `Fodiwalk` keeps the filter of `bench_fdwalk.py`, thus
+    at 101..119. `Fodiwalk` keeps the filter of `archive/fdwalk/bench_fdwalk.py`, thus
     every stored weight is either a walk gap or exactly `far_weight`."""
     from fodiwalk import Fodiwalk
     A, n = tiny

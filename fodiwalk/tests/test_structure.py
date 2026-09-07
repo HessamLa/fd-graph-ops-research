@@ -218,7 +218,7 @@ def test_model_holds_no_compare_against_a_policy_or_law_literal(
     comment that names a policy does not fail this test: only a `Compare`
     node does."""
     literals = {"walk", "walk_edges", "nbr_walk", "buckets", "cap",
-                "fdlinear", "fdlinear_fused"}
+                "fdlinear", "fdlinear_fused", "fdhop"}
     path = root / "model.py"
     tree = ast.parse(path.read_text())
     for node in ast.walk(tree):
@@ -385,11 +385,16 @@ def _repo_root_pkgs(root: pathlib.Path) -> set:
     `or any(d.glob("*.py"))` is NOT tidy-able down to the `__init__.py`
     test, and this comment exists to stop the next reader from doing it.
     Python 3 imports a directory of `.py` files with NO `__init__.py` as a
-    NAMESPACE package, and it imports cleanly. Three root directories are
-    in that state today -- `fdwalk`, `experiments`, `archive` -- thus the
+    NAMESPACE package, and it imports cleanly. Two root directories are in
+    that state today -- `experiments` and `archive` -- thus the
     `__init__.py` test alone made this gate blind to them, and
     `import fdwalk.walks` inside a stage module PASSED while working at
     runtime. That is the exact leak class this test exists to stop.
+
+    UPDATE 2026-09-06, commit `ea9ae67`: `fdwalk` moved under `archive/`,
+    so it is no longer a root directory. The rule is unchanged and the
+    example is kept, because the defect it records is the reason the rule
+    reads the filesystem instead of a hand-written list.
     """
     return {d.name for d in root.parent.iterdir()
             if d.is_dir() and ((d / "__init__.py").exists()
@@ -419,13 +424,14 @@ def _root_targets(path: pathlib.Path, repo_pkgs: set) -> set:
 def test_fodiwalk_imports_no_root_package_but_the_engine(
         root: pathlib.Path = PKG):
     """`fodiwalk` may reach ONE package beside it: `forcedirected`, the
-    engine and the kernel that `fodined` shares.
+    engine and the kernel.
 
     Every other root package is a defect. `forcedirected` reads nothing of
     this repository, thus every dependency points AT it and no cycle is
-    possible; `evaluator`, `fodined` and whatever lands next carry their own
+    possible; `evaluator` and whatever lands next carry their own
     dependencies, and an import of one from a stage module makes `fodiwalk`
-    depend on a consumer of itself.
+    depend on a consumer of itself. (`fodined` was the other consumer until
+    commit `ea9ae67` removed it.)
 
     This gate is what gives `ALLOWED_ROOT_PKGS` force. Before it, the set
     named an intent that no assertion consulted.
