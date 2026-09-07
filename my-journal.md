@@ -1,5 +1,36 @@
 This document is maintained by the user.
 
+[Sun Sep  6 10:21:20 PM PDT 2026]
+
+fodiwalk a simple force function seems to be the most performant variation out there.
+
+```
+    h == 1:  Fa = k1 * x,  Fr = -kr * h
+    h >= 2:  Fa = 0,       Fr = -kr * h * exp(-k4 * x)
+```
+
+Currently, I want to finalize it and write a paper. Then quickly move to the fdmap idea.
+
+HOT: Right now I tried fodiwalk with a p,q settings. Here are the results.
+
+**Cora Dataset**
+
+| q   | acc       | auc    | hop    | R²     |
+|-----|-----------|--------|--------|--------|
+| 0.5 | (DFS)     | 0.9848 | 0.9990 | 0.7182 |
+| 1.0 | (uniform) | 0.9882 | 0.9990 | 0.7119 |
+| 2.0 | (BFS)     | 0.9934 | 0.9994 | 0.7095 |
+
+**Pubmed Dataset**
+
+| q   | acc       | auc    | hop    | R²     |
+|-----|-----------|--------|--------|--------|
+| 0.5 | (DFS)     | 0.9909 | 0.9987 | 0.6042 |
+| 1.0 | (uniform) | 0.9915 | 0.9989 | 0.6194 |
+| 2.0 | (BFS)     | 0.9916 | 0.9990 | 0.6154 |
+
+Now let's just write the paper.
+
 [Thu Aug 27 10:57:41 PM PDT 2026]
 
 In fodiwalk we are storing walks and its corresponding data in CSR format. This is overkill. The walks generated during augmentation must be stored as flat array, and then passed to the embedding stage. We can store index of the nodes in a walk, as well as their min-hop and frequency in flat array format. This will save huge amount of space and make memory access much faster. The byproduct is that we will not need the ``D`` or hops matrix anymore.
