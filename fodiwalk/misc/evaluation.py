@@ -110,7 +110,7 @@ def classify(X, y, seed: int, test_size: float = 0.2, n_estimators: int = 200):
     return ({"accuracy": accuracy_score(y_test, y_pred),
              "precision": precision_score(y_test, y_pred),
              "recall": recall_score(y_test, y_pred),
-             "f1-score": f1_score(y_test, y_pred),
+             "f1_score": f1_score(y_test, y_pred),
              "auc": roc_auc_score(y_test, y_prob)},
             {"train": X_train.shape[0], "test": X_test.shape[0]})
 
