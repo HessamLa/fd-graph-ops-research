@@ -878,7 +878,7 @@ print("[fdwalk] RESULT\t" + "\t".join(f"{k}={v}" for k, v in [
     ("optim", args.optim), ("seed", args.seed), ("n", n),
     ("dnnz", D.nnz), ("t_aug", f"{info['t_aug']:.1f}"),
     ("t_embed", f"{t_embed:.1f}"), ("dz", f"{float(fd.Th(fd.dZ)):.4f}"),
-    ("acc", f"{scores['accuracy']:.4f}"), ("f1", f"{scores['f1-score']:.4f}"),
+    ("acc", f"{scores['accuracy']:.4f}"), ("f1", f"{scores['f1_score']:.4f}"),
     ("auc", f"{scores['auc']:.4f}"),
     ("r2_dist", f"{best['distance'][0]:.3f}"),
     ("mae_dist", f"{best['distance'][1]:.3f}"),

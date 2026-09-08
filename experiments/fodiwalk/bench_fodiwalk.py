@@ -272,12 +272,12 @@ log(f"{'hop regression':<18s} {t_hop:9.1f} {'':>12s}")
 log(f"{'TOTAL':<18s} {t_load + t_aug + t_embed + t_lp + t_hop:9.1f} "
     f"{rss_mb():12.0f}")
 log("")
-log(f"accuracy {scores['accuracy']:.4f}  F1 {scores['f1-score']:.4f}  "
+log(f"accuracy {scores['accuracy']:.4f}  F1 {scores['f1_score']:.4f}  "
     f"AUC {scores['auc']:.4f}  hop R2 (distance) {best['distance'][0]:.3f}  "
     f"||dZ|| {dz:.6f}")
 
 result(dz=f"{dz:.4f}", acc=f"{scores['accuracy']:.4f}",
-       f1=f"{scores['f1-score']:.4f}", auc=f"{scores['auc']:.4f}",
+       f1=f"{scores['f1_score']:.4f}", auc=f"{scores['auc']:.4f}",
        r2_dist=f"{best['distance'][0]:.3f}",
        mae_dist=f"{best['distance'][1]:.3f}",
        r2_vec=f"{best['vector'][0]:.3f}",

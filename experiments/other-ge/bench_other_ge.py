@@ -258,7 +258,7 @@ def main():
                 print(f"            link pred: acc {lp.scores['accuracy']:.4f}  "
                       f"prec {lp.scores['precision']:.4f}  "
                       f"rec {lp.scores['recall']:.4f}  "
-                      f"f1 {lp.scores['f1']:.4f}  auc {lp.scores['auc']:.4f}",
+                      f"f1_score {lp.scores['f1_score']:.4f}  auc {lp.scores['auc']:.4f}",
                       flush=True)
                 print(f"            hop regr ({da.sizes['n_pairs']} pairs, "
                       f"hops {da.sizes['hop_min']:.0f}.."
@@ -284,7 +284,7 @@ def main():
         print(f"{r['graph']:>14s} {r['method']:>9s} {r['n']:>8,} "
               f"{r['total_s']:>8.1f} {lp.scores['accuracy']:>6.3f} "
               f"{lp.scores['precision']:>6.3f} {lp.scores['recall']:>6.3f} "
-              f"{lp.scores['f1']:>6.3f} {lp.scores['auc']:>6.3f} "
+              f"{lp.scores['f1_score']:>6.3f} {lp.scores['auc']:>6.3f} "
               f"{da.scores['mlp']['mae']:>7.3f} "
               f"{da.scores['mlp']['r2']:>6.3f}", flush=True)
 

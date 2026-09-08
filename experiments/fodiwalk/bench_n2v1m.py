@@ -255,7 +255,7 @@ for epoch in checkpoints:
           acc=f"{lp.scores['accuracy']:.4f}",
           prec=f"{lp.scores['precision']:.4f}",
           rec=f"{lp.scores['recall']:.4f}",
-          f1=f"{lp.scores['f1']:.4f}", auc=f"{lp.scores['auc']:.4f}",
+          f1_score=f"{lp.scores['f1_score']:.4f}", auc=f"{lp.scores['auc']:.4f}",
           mlp_r2=f"{da.scores['mlp']['r2']:.4f}",
           mlp_mae=f"{da.scores['mlp']['mae']:.4f}",
           peak_rss=f"{_rss_peak[0]:.0f}", peak_gpu=f"{_gpu_peak[0]:.0f}")

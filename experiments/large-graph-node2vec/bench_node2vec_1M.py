@@ -231,7 +231,7 @@ def main():
     print(f"  accuracy : {lp.scores['accuracy']:.4f}")
     print(f"  precision: {lp.scores['precision']:.4f}")
     print(f"  recall   : {lp.scores['recall']:.4f}")
-    print(f"  f1-score : {lp.scores['f1']:.4f}")
+    print(f"  f1_score : {lp.scores['f1_score']:.4f}")
     print(f"  auc      : {lp.scores['auc']:.4f}", flush=True)
 
     t = time.perf_counter()
