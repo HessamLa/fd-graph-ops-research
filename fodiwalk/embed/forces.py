@@ -27,6 +27,11 @@ a law reads, and in what order. `embed/plan_contract.py` asserts it, and
     | ----------------- | ------------------------- | ------------ |
     | fdlinear          | (h, freq)                 | h <= 1 only  |
     | fdlinear_fused    | (w,)                      | w < 0        |
+    | fdhop             | (h,)                      | h <= 1 only  |
+    | fdhop2            | (h,)                      | h <= 1 only  |
+    | fdhop_min         | (h, deg_le)               | h <= 1, deg  |
+    | fdhop_all         | (h,)                      | EVERY h      |
+    | fdhop_all_freq    | (h, freq)                 | EVERY h      |
 
 REMOVED 2026-08-19 -- the shell-averaged laws. Three laws read a
 per-stored-pair coefficient `1 / |S_h(u)|`, the size of the hop shell of
@@ -144,6 +149,176 @@ def fdlinear_fused(x, planes, params):
     return Fa + Fr
 
 
+def fdhop(x, planes, params):
+    """`Fa + Fr` of the fdhop law. `planes` is `(h,)`.
+
+        h == 1:  Fa = k1 * x,  Fr = -kr * h
+        h >= 2:  Fa = 0,       Fr = -kr * h * exp(-k4 * x)
+
+    Added 2026-09-03 on the user's specification, to test one question: what
+    does the hop number alone do, with no `freq` term in the repulsion?
+
+    UPDATED 2026-09-04, also on the user's specification: the FAR branch now
+    decays with distance. The near branch does not -- at `h == 1` the
+    repulsion stays the flat `-kr * h`.
+
+    This is `fdlinear` without the frequency, with two differences that are
+    deliberate and are worth stating because they change the numbers:
+
+      * the far coefficient is `h`, not `h / freq`;
+      * the decay is `exp(-k4 * x)` and NOT `exp(sign * k4 * x)`: the minus
+        sign is written in, thus `sign` is unused here. This is the form of
+        the ORIGINAL forcedirected work, `-k3 * h * exp(-k4 * x)`, with
+        `k3 = kr`.
+
+    `k4` ADDED 2026-09-04 on the user's instruction. Before that the decay
+    was the literal `exp(-x)`, thus the run of 260904-071825 is reproduced
+    at `k4 = 1.0` and NOT at the `Config` default of 0.01, which is 100x
+    flatter.
+
+    A pad cell carries `h = 0` and gives exactly 0 from both terms.
+    """
+    h, = planes
+    live = h > 0                       # a pad cell has every plane at 0
+    near = h <= 1
+
+    Fa = jnp.where(near & live, params["k1"] * x, 0.0)
+    decay = jnp.where(near, 1.0, jnp.exp(-params["k4"] * x))
+    Fr = jnp.where(live, -params["kr"] * h * decay, 0.0)
+    return Fa + Fr
+
+
+def fdhop2(x, planes, params):
+    """`Fa + Fr` of the fdhop2 law. `planes` is `(h,)`.
+
+        Fr = -kr * h * exp(-k4 * x)   for EVERY h
+        Fa = k1 * x                   for h == 1
+        Fa = 0                        for h >= 2
+
+    Added 2026-09-06 on the user's specification. It is `fdhop` with ONE
+    change: the `h == 1` repulsion decays with distance as well. `fdhop`
+    holds it flat at `-kr * h`, thus the two laws differ only on the
+    neighbour rows, and any difference in a score comes from there.
+
+    A pad cell carries `h = 0` and gives exactly 0 from both terms.
+    """
+    h, = planes
+    live = h > 0                       # a pad cell has every plane at 0
+    near = h <= 1
+
+    Fa = jnp.where(near & live, params["k1"] * x, 0.0)
+    Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
+    return Fa + Fr
+
+
+def fdhop_min(x, planes, params):
+    """`Fa + Fr` of the fdhop_min law. `planes` is `(h, deg_le)`.
+
+        h == 1 and deg(u) <= deg(v):  Fa = k1 * x,  Fr = -kr * h
+        h >= 2:                       Fa = 0,       Fr = -kr * h * exp(-k4 * x)
+
+    `fdhop` with a SUBSET of the neighbours. A neighbour counts only when
+    the partner is at least as well connected as the row, thus a hub pulls
+    on its equals and above and not on its leaves, while a leaf still pulls
+    on its hub.
+
+    **The case the specification does not name.** `h == 1` with
+    `deg(u) > deg(v)` has no line. It is read here as "not considered": the
+    pair contributes EXACTLY ZERO, no attraction and no repulsion. The
+    other reading -- fall through to the far branch and repel -- would make
+    a hub push its own leaves away, which is the opposite of what the
+    subset is for. Say so if the other reading was meant; it is one line.
+
+    `deg_le` is that mask, 1.0 where `deg(u) <= deg(v)`. It is built from
+    `degrees_from_D`, the count of `h == 1` entries of the row, so under
+    `walk_edges` it is the graph degree.
+
+    A pad cell carries `h = 0` and gives exactly 0 from both terms.
+
+    Specified by the user on 2026-09-07.
+    """
+    h, deg_le = planes
+    live = h > 0                       # a pad cell has every plane at 0
+    near = h <= 1
+    keep = near & (deg_le > 0)         # a neighbour worth considering
+
+    Fa = jnp.where(keep & live, params["k1"] * x, 0.0)
+    Fr = jnp.where(live & keep, -params["kr"] * h,
+                   jnp.where(live & ~near,
+                             -params["kr"] * h * jnp.exp(-params["k4"] * x),
+                             0.0))
+    return Fa + Fr
+
+
+def fdhop_all(x, planes, params):
+    """`Fa + Fr` of the fdhop_all law. `planes` is `(h,)`.
+
+        Fr = -kr * h * exp(-k4 * x)   for EVERY h
+        Fa = k1 * x * exp(-k2 * h)    for EVERY h
+
+    `fdhop2` with the attraction let loose. Every other law of this file
+    attracts at `h == 1` and nowhere else; here a far pair pulls too, and
+    `k2` sets how fast that pull dies with the hop number. `k2` large is
+    `fdhop2` in the limit, since `exp(-k2 * h)` then vanishes for `h >= 2`
+    while `exp(-k2)` merely rescales `k1` on the neighbours.
+
+    The repulsion is `fdhop2`'s, unchanged.
+
+    `k2` is the hop decay of the attraction. The name is not new: the
+    shell-averaged law this project used before 2026-08-19 spelled the same
+    quantity `exp(-k2 * (h - h_shift))`, and the frozen copy at
+    `forcedirected/tests/reference/shell_force.py` still reads it that way.
+    `Config.k2` defaults to 1.0, NOT to the 0.01 that `k4` defaults to; the
+    two decay in different variables and a shared default would be a
+    coincidence, not a convention.
+
+    A pad cell carries `h = 0`, so `Fr` vanishes on its own. `Fa` does NOT:
+    `exp(-k2 * 0)` is 1, thus the `live` guard is load-bearing here in a way
+    it is not in `fdhop2`. Removing it would make every pad cell attract.
+
+    Specified by the user on 2026-09-07.
+    """
+    h, = planes
+    live = h > 0                       # a pad cell has every plane at 0
+
+    Fa = jnp.where(live, params["k1"] * x * jnp.exp(-params["k2"] * h), 0.0)
+    Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
+    return Fa + Fr
+
+
+def fdhop_all_freq(x, planes, params):
+    """`Fa + Fr` of the fdhop_all_freq law. `planes` is `(h, freq)`.
+
+        Fa =  freq * k1 * x * exp(-k2 * h)   for EVERY h
+        Fr = -freq * kr * h * exp(-k4 * x)   for EVERY h
+
+    `fdhop_all` with both terms weighted by how often the walks reached the
+    partner. A pair the walks met many times pulls and pushes harder, in
+    proportion.
+
+    `freq` is the same plane `fdlinear` reads, and it is NOT small: on cora
+    the far pairs average 18.6 and reach 771. Since `freq` multiplies the
+    attraction, which is linear in `x`, it multiplies the row's spring
+    constant by the same amount, and that constant must stay under 1.0 or
+    the run goes to non-finite. `k1` is pegged at 1.0 by the specification,
+    so `k2` is the only lever left -- exactly as it was for `fdhop_all`,
+    only the number needed is larger.
+
+    Both terms carry `freq`, so a pad cell is zero twice over: `freq = 0`
+    there, and the `live` guard on `h` zeroes it again.
+
+    Specified by the user on 2026-09-08, with `k1 = 1.0`.
+    """
+    h, freq = planes
+    live = h > 0                       # a pad cell has every plane at 0
+
+    Fa = jnp.where(live, freq * params["k1"] * x
+                   * jnp.exp(-params["k2"] * h), 0.0)
+    Fr = jnp.where(live, -freq * params["kr"] * h
+                   * jnp.exp(-params["k4"] * x), 0.0)
+    return Fa + Fr
+
+
 def fuse(h, freq):
     """The `w` plane, on the host, from `D.data` and the `freq` data."""
     import numpy as np
@@ -161,12 +336,22 @@ def fuse(h, freq):
 FORCE_PLANES = {
     "fdlinear":       ("h", "freq"),
     "fdlinear_fused": ("w",),
+    "fdhop":          ("h",),
+    "fdhop2":         ("h",),
+    "fdhop_min":      ("h", "deg_le"),
+    "fdhop_all":      ("h",),
+    "fdhop_all_freq": ("h", "freq"),
 }
 
 # The law of each name.
 FORCE_FN = {
     "fdlinear":       fdlinear,
     "fdlinear_fused": fdlinear_fused,
+    "fdhop":          fdhop,
+    "fdhop2":         fdhop2,
+    "fdhop_min":      fdhop_min,
+    "fdhop_all":      fdhop_all,
+    "fdhop_all_freq": fdhop_all_freq,
 }
 
 assert set(FORCE_PLANES) == set(FORCE_FN)   # one law, one plane tuple

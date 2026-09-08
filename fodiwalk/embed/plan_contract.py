@@ -112,7 +112,20 @@ def _check_w(p, D, law):
                   f"may carry it. {int((p == 0).sum())} stored pairs do.")
 
 
-PLANE_CHECKS = {"h": _check_h, "freq": _check_freq, "w": _check_w}
+def _check_deg_le(p, D, law):
+    v = np.unique(np.asarray(p, dtype=np.float64))
+    if v.size and not np.all(np.isin(v, (-1.0, 1.0, 0.0))):
+        _fail(f"{law}: the `deg_le` plane must hold only +1.0, -1.0 and "
+              f"0.0. Got {v.size} distinct values in "
+              f"[{v.min():.6g}, {v.max():.6g}]. It is a SIGNED MASK: +1 "
+              f"means `deg(u) <= deg(v)`, -1 means it does not, and 0.0 is "
+              f"a pad cell and nothing else. A 1/0 encoding breaks I3, "
+              f"because a real pair would then carry 0 in this plane and "
+              f"a non-zero `h`, which `check_plan` reads as a corrupt pad.")
+
+
+PLANE_CHECKS = {"h": _check_h, "freq": _check_freq, "w": _check_w,
+                "deg_le": _check_deg_le}
 
 
 # ---------------------------------------------------------------------------

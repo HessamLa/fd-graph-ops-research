@@ -40,7 +40,7 @@ CONFIG_FIELDS = [
     ("far_with_buckets", False), ("bucket_total", 0), ("landmarks", 0),
     ("far_max", 32), ("far_scale", 1.0), ("force", "fdlinear"),
     ("fuse_planes", False), ("no_deg_norm", False), ("deg_source", "auto"),
-    ("k1", 0.999), ("k4", 0.01), ("kr", 1.0), ("fdlinear_sign", -1.0),
+    ("k1", 0.999), ("k2", 1.0), ("k4", 0.01), ("kr", 1.0), ("fdlinear_sign", -1.0),
     ("random_drop_rate", 0.5), ("drop_strategy", "random_rows"),
     ("b_cells", 16_384), ("k_max", 256), ("ladder_base", 1.5),
     ("chunks", 1), ("chunk_host", False), ("check_planes", True),

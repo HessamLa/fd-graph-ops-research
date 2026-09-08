@@ -71,6 +71,7 @@ class ForceSpec:
     force: str = "fdlinear"
     fuse_planes: bool = False
     k1: float = 0.999
+    k2: float = 1.0
     k4: float = 0.01
     kr: float = 1.0
     fdlinear_sign: float = -1.0
@@ -100,7 +101,8 @@ def force_params(spec: ForceSpec) -> dict:
     The kernel only APPLIES these; it never chooses them. Choosing them
     belongs to the LAW, thus this stays beside `build_planes`.
     """
-    return dict(k1=spec.k1, k4=spec.k4, kr=spec.kr, sign=spec.fdlinear_sign)
+    return dict(k1=spec.k1, k2=spec.k2, k4=spec.k4, kr=spec.kr,
+                sign=spec.fdlinear_sign)
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +135,40 @@ def _build_w(D, freq, law, pairs, policy):
     return fuse(D.data, freq)
 
 
-PLANE_BUILDERS = {"h": _build_h, "freq": _build_freq, "w": _build_w}
+def _build_deg_le(D, freq, law, pairs, policy):
+    """+1.0 where `deg(u) <= deg(v)`, -1.0 otherwise, for each stored pair.
+
+    **The sign carries the mask, and 0.0 is reserved for a pad cell.** The
+    obvious encoding, 1/0, breaks contract I3: `plan_contract.check_plan`
+    asserts that a cell holding 0 in one plane holds 0 in EVERY plane,
+    because that is how a pad cell is recognised. A real pair with
+    `deg(u) > deg(v)` would carry 0 here and a non-zero `h`, and the plan
+    check reads that as a corrupted pad. `fdlinear_fused` solves the same
+    problem the same way: its `w` plane uses a negative sentinel and keeps
+    exactly 0 for padding.
+
+    The degree is `forces.degrees_from_D`, the count of `h == 1` entries of
+    each row -- the same quantity the engine divides by. Under `walk_edges`
+    every edge is stored at `h = 1`, thus that count IS the graph degree.
+    Under a policy that stores fewer edges it is not, and the plane follows
+    the stored degree, not the graph.
+
+    Added 2026-09-07 for `fdhop_min`, which keeps a neighbour only when the
+    partner is at least as well connected as the row.
+    """
+    # numpy is imported here and not at module level: this module keeps a
+    # `dataclasses`-only import list on purpose, and `forces.fuse` takes the
+    # same local-import route for the same reason.
+    import numpy as np
+    from .forces import degrees_from_D
+    from forcedirected import row_of
+    deg = degrees_from_D(D)
+    u = row_of(D.indptr)
+    return np.where(deg[u] <= deg[D.indices], 1.0, -1.0).astype(np.float32)
+
+
+PLANE_BUILDERS = {"h": _build_h, "freq": _build_freq, "w": _build_w,
+                  "deg_le": _build_deg_le}
 
 # The two tables are one contract: a name that one holds and the other does
 # not is a plane that is built and not asserted, or asserted and not built.

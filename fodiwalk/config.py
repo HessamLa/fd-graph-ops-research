@@ -74,6 +74,7 @@ class Config:
     no_deg_norm: bool = False
     deg_source: str = "auto"       # auto | D | A
     k1: float = 0.999
+    k2: float = 1.0                # hop decay of the attraction
     k4: float = 0.01
     kr: float = 1.0
     fdlinear_sign: float = -1.0
