@@ -1,0 +1,878 @@
+diff --git a/fodined/embedding/sell_c_sigma.py b/fodined/embedding/sell_c_sigma.py
+index 05ff7c0..0d46ee7 100644
+--- a/fodined/embedding/sell_c_sigma.py
++++ b/fodined/embedding/sell_c_sigma.py
+@@ -2,7 +2,20 @@
+ 
+ The SELL-C-sigma layout and kernel live in ONE place now:
+ 
+-    forcedirected/sell_c_sigma.py
++    forcedirected_old/sell_c_sigma.py
++
++REPOINTED 2026-09-02, from `forcedirected` to `forcedirected_old`.
++`forcedirected` no longer holds SELL-C-sigma: its kernel is now a flat
++batch of pairs reduced by `segment_sum`, with no sorted rows, no rungs and
++no padded tiles, so `build_ladder`, `make_plan` and `PlanCache` do not
++exist there any more. `forcedirected_old/` is the owner's copy of the
++package as it stood before that change, renamed from `forcedirected-old`
++only because Python cannot import a name with a hyphen. Nothing inside it
++is edited.
++
++`fodined` is DEPRECATED (owner, 2026-09-02). This forwarder keeps it
++running against the frozen kernel; it is not a path to develop on. New
++work uses `forcedirected` and its flat kernel.
+ 
+ This module was one of two copies of that code. The copies never diverged
+ in the algorithm, but a copy that nobody diffs is a defect that waits, thus
+@@ -13,19 +26,21 @@ was lost: the full module documentation -- the layout in one paragraph, the
+ coefficient-plane contract, the padding contract, the `D` contract, and the
+ note on the plan builder's own notion of degree -- moved WITH the code and
+ is unchanged there. Read it there. Parity evidence:
+-`forcedirected/PARITY.md`.
++`forcedirected_old/PARITY.md`.
+ 
+ This file exists so `fodined`, `fdwalk/modular.py` and the four benchmark
+ scripts under `experiments/` keep their import path. It holds no logic.
+ 
+-`forcedirected` reads numpy, scipy and jax ONLY. This import therefore does
+-NOT make `fodined` depend on `fodiwalk`, and it must never be allowed to.
++`forcedirected_old` reads numpy, scipy and jax ONLY. This import therefore
++does NOT make `fodined` depend on `fodiwalk`, and it must never be allowed
++to.
+ 
+-To change the layout or the kernel, edit `forcedirected/sell_c_sigma.py`.
++Do not change the layout or the kernel here. `forcedirected_old` is
++frozen on purpose -- it is the before side of a measured comparison.
+ """
+ from __future__ import annotations
+ 
+-from forcedirected.sell_c_sigma import (
++from forcedirected_old.sell_c_sigma import (
+     build_ladder,
+     make_plan,
+     step,
+diff --git a/fodiwalk/config.py b/fodiwalk/config.py
+index e95b54f..84ef48b 100644
+--- a/fodiwalk/config.py
++++ b/fodiwalk/config.py
+@@ -81,6 +81,13 @@ class Config:
+     drop_strategy: str = "random_rows"
+ 
+     # -- the layout ----------------------------------------------------
++    # `b_cells`, `k_max` and `ladder_base` tuned the SELL-C-sigma tiled
++    # plan (removed 2026-09-02; `forcedirected/flat_batch.py` replaced it
++    # with a flat, padding-free batch). They stay here, accepted and
++    # IGNORED, only so a script that still passes them does not raise
++    # `TypeError: Unknown Fodiwalk option`; they no longer read into
++    # anything. `chunks` / `chunk_host` are unaffected -- the row-range
++    # chunking they control was never part of the layout.
+     b_cells: int = 16_384
+     k_max: int = 256
+     ladder_base: float = 1.5
+@@ -89,4 +96,10 @@ class Config:
+ 
+     # -- the asserter --------------------------------------------------
+     check_planes: bool = True      # I1, I2, I4, I5 at the seam
+-    check_padding: bool = True     # I3, one pass over the built tiles
++    # `check_padding` gated I3, the padded-tile invariant. It went with
++    # the tiles it checked (2026-09-02): the flat batch's own pad entries
++    # are ONE simple, uniform construction (`flat_batch.build_batch`),
++    # not the ladder/hub-split/pack pipeline I3 existed to catch a defect
++    # in, so there is no equivalent check to gate here. Kept, ignored, for
++    # the same reason as the three fields above.
++    check_padding: bool = True
+diff --git a/fodiwalk/embed/__init__.py b/fodiwalk/embed/__init__.py
+index 50e2e0c..adc2d83 100644
+--- a/fodiwalk/embed/__init__.py
++++ b/fodiwalk/embed/__init__.py
+@@ -55,7 +55,7 @@ from . import plan_contract
+ from .plan_contract import PlaneContractError
+ from .planes import ForceSpec, PLANE_BUILDERS, build_planes, force_params
+ from .degrees import resolve_degrees
+-from .planner import PlanSet, PlanSpec, build_plans
++from .planner import PlanSet, PlanSpec, build_plans, forces_of
+ 
+ __all__ = [
+     "FORCE_PLANES", "FORCE_FN", "planes_of", "force_fn",
+@@ -63,5 +63,5 @@ __all__ = [
+     "plan_contract", "PlaneContractError",
+     "ForceSpec", "PLANE_BUILDERS", "build_planes", "force_params",
+     "resolve_degrees",
+-    "PlanSpec", "PlanSet", "build_plans",
++    "PlanSpec", "PlanSet", "build_plans", "forces_of",
+ ]
+diff --git a/fodiwalk/embed/degrees.py b/fodiwalk/embed/degrees.py
+index 7fea809..dd8434d 100644
+--- a/fodiwalk/embed/degrees.py
++++ b/fodiwalk/embed/degrees.py
+@@ -1,7 +1,9 @@
+ """embed.degrees -- the divisor of the row sum. THREE sources, an order.
+ 
+-`forcedirected.make_plan` turns this array into `inv_deg_ext`, and the
+-kernel multiplies every row of `dZ` by it. A degree of 0 becomes 0.0 and it
++`embed.planner.build_plans` turns this array into `inv_deg` (`inv_deg_ext`
++before 2026-09-02, when the SELL-C-sigma layout it padded for went away),
++and the kernel multiplies every row of `dZ` by it. A degree of 0 becomes
++0.0 and it
+ zeroes the WHOLE force of the row -- the repulsion too. The row then never
+ moves, for the whole run, and nothing raises (trap 4 of
+ `dev-docs/REFACTOR.md`, invariant I5). `plan_contract.check_degrees`
+diff --git a/fodiwalk/embed/plan_contract.py b/fodiwalk/embed/plan_contract.py
+index dd6daf7..6419e72 100644
+--- a/fodiwalk/embed/plan_contract.py
++++ b/fodiwalk/embed/plan_contract.py
+@@ -31,8 +31,21 @@ The invariants, quoted from PRD section 7:
+     I4  stored weights are integers, and 1 means adjacency
+     I5  a row with no `h = 1` entry gets an explicit degree
+ 
+-`check` asserts I1, I2 and I4. `check_plan` asserts I3 on a built plan.
+-`check_degrees` asserts I5.
++`check` asserts I1, I2 and I4. `check_degrees` asserts I5.
++
++I3 WENT WITH THE TILES it checked (2026-09-02). `check_plan` read a built
++SELL-C-sigma plan -- rungs of `(nb, R, k)` tiles -- and asserted that every
++padded cell of every tile held 0 in every plane, because the ladder / hub
++split / balanced-pack pipeline that built those tiles was complex enough to
++get that wrong. `forcedirected/flat_batch.py` replaced that pipeline with
++one flat, padding-free-to-a-row batch (only the pair AXIS is padded, to a
++power of two, purely so JAX does not recompile on every distinct pair
++count): `build_batch` writes its own pad entries in one place, with no
++rung, no rank, no split to get wrong, so there is no equivalent structure
++left for a check like I3 to guard. See
++`agentic-log/00.master-agent/prompts/001.dense-kernel.md` for the decision.
++I1, I2, I4 and I5 are about the PLANES themselves, not the tiles, and nothing
++about them changed -- they stay.
+ 
+ **It RAISES. It never warns, and it never falls back to other physics.** A
+ missing plane is a defect of the augmentation, and different physics under
+@@ -180,39 +193,5 @@ def check_degrees(degrees, D) -> None:
+               f"the true degree of A, or 1.")
+ 
+ 
+-def check_plan(plan, n_planes: int) -> None:
+-    """Assert I3: every plane of a PAD cell is exactly 0.
+-
+-    A pad cell also carries the row's own id as its neighbour, thus `x = 0`
+-    and the kernel zeroes the cell a second time. The double safety is
+-    deliberate; this assertion tests the first layer, which is the one a
+-    law with a constant term depends on.
+-
+-    A pad cell is one that no real stored entry filled. `make_plan` builds
+-    the tiles with `np.where(valid, p[src], 0.0)`, thus this reads the
+-    tiles and finds the cells where EVERY plane is 0 -- which is what the
+-    contract promises.
+-    """
+-    for r, rung in enumerate(plan):
+-        rows, nbrs, *tiles = rung
+-        if len(tiles) != n_planes:
+-            _fail(f"rung {r} carries {len(tiles)} plane tiles and the law "
+-                  f"reads {n_planes} (I2).")
+-        # A pad ROW is the sentinel owner id; a pad CELL of a real row has
+-        # its own row id as the neighbour. Both must give 0 in every tile.
+-        pad = np.ones(tiles[0].shape, dtype=bool)
+-        for t in tiles:
+-            pad &= (np.asarray(t) == 0.0)
+-        # Every cell that is padding must be 0 in EVERY tile: a cell that
+-        # is 0 in one tile and not in another is a partly-filled pad.
+-        for j, t in enumerate(tiles):
+-            t = np.asarray(t)
+-            zero_here = (t == 0.0)
+-            mixed = zero_here & ~pad
+-            if mixed.any() and n_planes > 1:
+-                # No plane name of the registry lets a real stored pair
+-                # carry 0 (`h` cannot, `freq` cannot, `w` cannot), thus
+-                # this is a defect for every plane the registry has.
+-                _fail(f"rung {r}, plane tile {j}: {int(mixed.sum())} cells "
+-                      f"are 0 in this plane and not in every plane. A pad "
+-                      f"cell carries 0 in ALL of them (I3).")
++# `check_plan` (I3, the padded-tile invariant) is REMOVED -- see the
++# module docstring's note on I3, above.
+diff --git a/fodiwalk/embed/planner.py b/fodiwalk/embed/planner.py
+index d37c6c4..55c44cd 100644
+--- a/fodiwalk/embed/planner.py
++++ b/fodiwalk/embed/planner.py
+@@ -1,25 +1,42 @@
+-"""embed.planner -- `D` and its planes into the batch plan, and the JAX plumbing.
++"""embed.planner -- `D` and its planes into flat batches, and the JAX plumbing.
+ 
+-One plan, or `chunks` plans of a ROW RANGE each. The whole plan of a graph
+-of a million nodes does not fit beside `Z` and `dZ` on a 2 GB card. A chunk
+-holds the rows `[a, b)` only, thus the device holds ONE chunk at a time.
+-The rows outside `[a, b)` become empty, and `make_plan` gives an isolated
+-row no virtual row at all, thus an empty row costs nothing in the plan of
+-another chunk.
++One flat batch, or `chunks` of them, one ROW RANGE each. The whole graph's
++pairs do not fit beside `Z` and `dZ` on a 2 GB card at a million nodes. A
++chunk holds the rows `[a, b)` only, thus at most one chunk's own pair
++arrays need to be on the device at a time.
+ 
+-WHY A ROW RANGE, and never a set of pairs (trap 8 of REFACTOR.md, I6):
+-`forcedirected.step` writes `dZ.at[rows].add(...)`, thus only DISJOINT
+-rows make the parts additive. `ForceDirected.embed` slices `dZ` by
+-the same range for its batches, thus the chunk and the batch are the same
+-object.
++WHY A ROW RANGE, and never a set of pairs (trap 8 of REFACTOR.md, I6): a
++chunk's `step` reduces with `segment_sum` over that chunk's OWN local row
++index, thus only DISJOINT rows make the parts additive. `ForceDirected.embed`
++slices `dZ` by the same range for its batches, thus the chunk and the batch
++are the same object.
+ 
+ THE GLOBAL QUANTITIES STAY GLOBAL. `degrees` is counted over the WHOLE `D`
+-and a chunk only slices the planes. A degree counted on one chunk is not
+-the degree of the node.
+-
+-Provenance: `Fodiwalk._build_plan` of `fodiwalk/fodiwalk.py` (2026-08-20),
+-with the `jax.jit`, `jax.device_put` and `functools.partial` plumbing moved
+-out of the model class (defect D7).
++and a chunk only slices the planes and the degree divisor. A degree counted
++on one chunk is not the degree of the node.
++
++REWRITTEN 2026-09-02: this module built the SELL-C-sigma tiled plan
++(`forcedirected.make_plan`); it now builds `forcedirected.flat_batch`'s
++flat pair arrays instead. No padded tile, no rung, no hub split -- see
++`forcedirected/flat_batch.py` for what replaced them and why. The ROW-RANGE
++chunking above is untouched: it was never part of the layout, only of how
++much of one `D` sits on the device at once.
++
++**Device residency.** A chunk's flat pair arrays are HOST numpy here --
++this function calls `jax.device_put` on nothing but the small, global
++`inv_deg` array. `Fodiwalk.forces` moves ONE chunk's arrays to the device
++when it is first used, and (`chunk_host = False`, the default) keeps that
++device copy for later epochs; `chunk_host = True` re-transfers a chunk's
++host arrays on every use and never keeps one. The earlier version of this
++module (that built the tiled plan) called `device_put` on every chunk
++INSIDE this function's own loop whenever `chunk_host` was `False`, so
++`--chunks` alone never bounded device memory -- every chunk landed on the
++card during planning, before an epoch had even run. This version moves
++nothing to the device until `forces` asks for a specific chunk, so
++`--chunks` without `--chunk-host` now costs the SAME memory over time (a
++resident run still ends up holding every chunk, same as before) but never
++that up-front spike, and `--chunks` WITH `--chunk-host` bounds it at one
++chunk for the whole run, which the earlier version could not do either.
+ 
+ Import discipline: numpy, scipy, jax, the sibling modules of `embed`
+ and `forcedirected` only.
+@@ -27,28 +44,21 @@ and `forcedirected` only.
+ from __future__ import annotations
+ 
+ import dataclasses
+-import functools
+ 
+ import numpy as np
+-import scipy.sparse as sp
+ import jax
++import jax.numpy as jnp
+ 
+-from forcedirected import make_plan, step
+-
+-from . import plan_contract
++from forcedirected import build_batch, make_step
+ 
+ 
+ @dataclasses.dataclass(frozen=True)
+ class PlanSpec:
+-    """The narrow stage-3 config of the LAYOUT. No physics, no walk knob."""
++    """The narrow stage-3 config of the BATCHING. No physics, no walk knob."""
+ 
+-    b_cells: int = 16_384
+-    k_max: int = 256
+-    ladder_base: float = 1.5
+     chunks: int = 1
+     chunk_host: bool = False
+     check_planes: bool = True      # I1, I2, I4, I5 at the seam
+-    check_padding: bool = True     # I3, one pass over the built tiles
+ 
+     @classmethod
+     def from_config(cls, cfg) -> "PlanSpec":
+@@ -60,72 +70,112 @@ class PlanSpec:
+ class PlanSet:
+     """What stage 3 needs for every epoch. The seam of the planner to the model.
+ 
+-    `plans`        one plan for each chunk, on the device when `resident`.
+-    `steps`        the jitted kernel of each chunk.
+-    `inv_deg_ext`  `(n + 1,)` on the device. Global, thus every chunk has
+-                   the same array.
+-    `chunk_rows`   the row count of a chunk. `forces` picks the plan with it.
+-    `resident`     the plans stay on the device.
++    `plans`        one flat batch `(u_glob, u_loc, v, tiles)` for each
++                   chunk, on the HOST (numpy). `Fodiwalk.forces` is what
++                   moves a chunk's arrays to the device.
++    `steps`        the jitted kernel of each chunk, `R` and the force law
++                   already baked in (`forcedirected.flat_batch.make_step`).
++    `row_counts`   the true row count of each chunk -- equal to
++                   `chunk_rows` for every chunk but possibly the last one,
++                   which can be narrower when `chunks` does not divide `n`.
++    `inv_deg`      `(n,)` on the device. Global, thus every chunk slices
++                   its own `[a, b)` piece of it.
++    `chunk_rows`   the row count of a chunk (the last one may hold fewer
++                   rows; see `row_counts`). `forces` picks the batch with it.
++    `resident`     `Fodiwalk.forces` keeps a chunk's device arrays after
++                   its first use when this is True (`chunk_host = False`);
++                   otherwise it re-transfers them on every use and keeps
++                   none.
+     `stats`        the plan statistics. The model exposes it as `plan_stats`.
++    `dev_cache`    one slot for each chunk, `None` until `forces_of` first
++                   moves that chunk to the device. Owned here (reset
++                   whenever `plans` is rebuilt) and not by the model.
+     """
+ 
+     plans: list
+     steps: list
+-    inv_deg_ext: object
++    row_counts: list
++    inv_deg: object
+     chunk_rows: int
+     resident: bool
+     stats: dict
++    dev_cache: list = dataclasses.field(default_factory=list)
+ 
+ 
+ def build_plans(D, planes, degrees, spec: PlanSpec, force_fn) -> PlanSet:
+-    """The plan of `D`, in `spec.chunks` row ranges, and the jitted steps.
++    """The flat batches of `D`, in `spec.chunks` row ranges, and their
++    jitted steps.
+ 
+     `planes` are the `(nnz,)` arrays of `planes.build_planes`, aligned to
+-    `D.indices`. A chunk slices them with the CSR span of its rows.
++    `D.indices`. A chunk slices them with the CSR span of its rows
++    (`forcedirected.flat_batch.build_batch` does the slicing).
+     """
+     n = D.shape[0]
+     resident = not spec.chunk_host
+     chunk_rows = max(1, (n + max(1, spec.chunks) - 1) // max(1, spec.chunks))
+-    plans, steps, cells = [], [], 0
+-    stats = None
+-    inv_deg_ext = None
+-    # ONE scratch buffer for the padded per-chunk `indptr`, reused for
+-    # every chunk instead of a fresh `np.zeros(n + 1)` each time: at
+-    # 1.13M nodes over 8 chunks that was eight (n + 1) allocations, ~72 MB
+-    # of churn, to hold data `make_plan` reads and returns from before the
+-    # next chunk starts. `Dc` is a loop-local variable that nothing keeps
+-    # past this iteration -- `make_plan`'s OWN `D = to_csr(Dc)` is a no-op
+-    # (`Dc` is already a CSR) and everything it reads from `indptr` is
+-    # consumed before `make_plan` returns -- so overwriting the buffer on
+-    # the next iteration is safe.
+-    scratch = np.zeros(n + 1, dtype=D.indptr.dtype)
++
++    deg = np.ascontiguousarray(degrees, dtype=np.float64)
++    deg_safe = np.where(deg == 0, 1.0, deg)
++    inv_deg = np.where(deg == 0, 0.0, 1.0 / deg_safe).astype(np.float32)
++
++    plans, steps, row_counts, cells = [], [], [], 0
+     for a in range(0, n, chunk_rows):
+         b = min(a + chunk_rows, n)
+-        lo, hi = int(D.indptr[a]), int(D.indptr[b])
+-        np.subtract(D.indptr, lo, out=scratch)
+-        np.clip(scratch, 0, hi - lo, out=scratch)
+-        Dc = sp.csr_matrix((D.data[lo:hi], D.indices[lo:hi], scratch),
+-                           shape=D.shape)
+-        plan, inv_deg_ext, stats = make_plan(
+-            Dc, tuple(p[lo:hi] for p in planes), degrees=degrees,
+-            b_cells=spec.b_cells, k_max=spec.k_max,
+-            ladder_base=spec.ladder_base)
+-        cells += stats["cells"]
+-        # `resident` keeps the plan on the device, which is the fast form
+-        # and the one that needs the memory. Otherwise the plan stays in
+-        # the host memory and it moves for each use.
+-        plans.append(jax.tree_util.tree_map(jax.device_put, plan)
+-                     if resident else plan)
+-        steps.append(jax.jit(functools.partial(
+-            step, n=n, force_fn=force_fn)))
+-        if spec.check_padding:
+-            # I3, on the HOST tiles and before the device copy: a pad cell
+-            # carries 0 in every plane. One pass for each chunk, one time
+-            # for each D.
+-            plan_contract.check_plan(plan, len(planes))
++        u_glob, u_loc, v, tiles, R, m_real = build_batch(D, planes, a, b)
++        plans.append((u_glob, u_loc, v, tiles))
++        row_counts.append(R)
++        steps.append(make_step(force_fn, R))
++        cells += m_real
+     return PlanSet(
+-        plans=plans, steps=steps,
+-        inv_deg_ext=jax.device_put(inv_deg_ext),
++        plans=plans, steps=steps, row_counts=row_counts,
++        inv_deg=jax.device_put(inv_deg),
+         chunk_rows=chunk_rows, resident=resident,
+-        stats=dict(stats, cells=cells, chunks=len(plans),
+-                   rows_per_chunk=chunk_rows))
++        stats=dict(cells=cells, chunks=len(plans), rows_per_chunk=chunk_rows),
++        dev_cache=[None] * len(plans))
++
++
++# ---------------------------------------------------------------------------
++# Kernel invocation -- stage 3's own logic, not the model's wiring. Moved
++# here from `fodiwalk/model.py` (2026-09-02): `forces()` is the seam, but
++# looping over the chunks a row range touches and deciding when a chunk's
++# arrays move to the device are BATCHING decisions, the same kind `build_plans`
++# above already makes -- they belong beside it, not in the composition root.
++# ---------------------------------------------------------------------------
++def _chunk_batch(ps: PlanSet, i: int):
++    """Chunk `i`'s flat pair arrays, on the device. `ps.resident` (default)
++    keeps them there after the first transfer; `chunk_host = True`
++    (`ps.resident = False`) re-transfers the host arrays every call and
++    keeps none -- see this module's docstring, "Device residency"."""
++    if ps.resident:
++        if ps.dev_cache[i] is None:
++            ps.dev_cache[i] = jax.tree_util.tree_map(jax.device_put, ps.plans[i])
++        return ps.dev_cache[i]
++    return jax.tree_util.tree_map(jax.device_put, ps.plans[i])
++
++
++def forces_of(ps: PlanSet, Z, params, row_start: int, row_end: int):
++    """The dZ rows of `[row_start, row_end)`, from a fully built `PlanSet`.
++
++    A chunk is a ROW RANGE. `chunks` (this plan) and a caller's own
++    row-batching are independent knobs (I6), so the requested range can
++    span more than one chunk; this loop covers every chunk it touches and
++    writes each chunk's own slice into the answer. `segment_sum` still
++    runs over a WHOLE chunk each time -- it needs every pair of a chunk's
++    own rows to land its sum -- never a part of one.
++    """
++    out = jnp.zeros((row_end - row_start, Z.shape[1]), dtype=jnp.float32)
++    i = min(row_start // ps.chunk_rows, len(ps.plans) - 1)
++    while True:
++        chunk_start = i * ps.chunk_rows
++        R = ps.row_counts[i]
++        lo, hi = max(row_start, chunk_start), min(row_end, chunk_start + R)
++        u_glob, u_loc, v, tiles = _chunk_batch(ps, i)
++        full = ps.steps[i](Z, u_glob, u_loc, v, tiles,
++                           ps.inv_deg[chunk_start:chunk_start + R], params)
++        out = out.at[lo - row_start:hi - row_start].set(
++            full[lo - chunk_start:hi - chunk_start])
++        del full
++        if chunk_start + R >= row_end or i == len(ps.plans) - 1:
++            break
++        i += 1
++    return out
+diff --git a/fodiwalk/model.py b/fodiwalk/model.py
+index b1a9c7a..0354fc3 100644
+--- a/fodiwalk/model.py
++++ b/fodiwalk/model.py
+@@ -4,24 +4,22 @@
+ (stage 1, a STUB), `graph_walk` (stage 2, the walks), `augment_graph` (the
+ walks into `D`, then the whole of stage 3 on it), `forces` (one batch of
+ the law) and `embed` (`augment_graph` once, then the engine's loop). No
+-`fit` (2026-08-21): `make_graph` is a stub and `fit` promised a stage that
+-was never real. THIS CLASS IS THE COMPOSITION ROOT, and the ONLY place the
+-stages meet: neither `augment_graph` nor `embed` imports the other, and the
+-DATA of `augment_graph.result.Augmentation` crosses (`fodiwalk-module.md`).
+-
+-THE ONE RULE THAT THIS CLASS EXISTS TO KEEP. The plane list comes from
+-`embed.forces.FORCE_PLANES`, through `embed.build_planes`, and never an
+-`if` chain: a missing plane RAISES and never falls back to another law's
+-planes, the fallback that once read a coefficient plane as `h` and went to
+-NaN with no error. `embed.plan_contract` asserts it before `make_plan`.
+-
+-ONE GENERATOR. `self.rng` of the base class flows walks -> far pairs ->
+-link prediction -> hop sample, in that order. A second generator, a moved
+-call or one more draw changes every recorded number.
+-
+-`embed()` CALLS `augment_graph()` ITSELF, one time. A second call embeds a
+-`D` that is not the `D` the log reports, and `D.nnz` still agrees because
+-the pair counts are stable. Time the stage with a `train_begin` callback.
++`fit`: `make_graph` is a stub, and `fit` promised a stage that was never
++real. THIS CLASS IS THE COMPOSITION ROOT, and the ONLY place the stages
++meet -- neither `augment_graph` nor `embed` imports the other; the DATA of
++`augment_graph.result.Augmentation` crosses (`fodiwalk-module.md`).
++
++THE ONE RULE THIS CLASS EXISTS TO KEEP. The plane list comes from
++`embed.forces.FORCE_PLANES`, through `embed.build_planes`, never an `if`
++chain: a missing plane RAISES and never falls back to another law's
++planes -- the fallback that once read a coefficient plane as `h` and went
++to NaN with no error. `embed.plan_contract` asserts it first.
++
++ONE GENERATOR: `self.rng` flows walks -> far pairs -> link prediction ->
++hop sample, in that order. A second generator, a moved call or one more
++draw changes every recorded number. `embed()` CALLS `augment_graph()`
++ITSELF, one time -- a second call embeds a `D` that is not the `D` the
++log reports. Time the stage with a `train_begin` callback.
+ """
+ from __future__ import annotations
+ 
+@@ -37,8 +35,8 @@ from .base import Fodiwalk_base
+ from .config import Config
+ from .misc.drop import drop_steady_rate
+ from .augment_graph import policies, AugmentSpec
+-from .embed import (ForceSpec, PlanSpec, build_planes, build_plans,
+-                    force_fn, force_params, plan_contract, resolve_degrees)
++from .embed import (ForceSpec, PlanSpec, build_planes, build_plans, force_fn,
++                    force_params, forces_of, plan_contract, resolve_degrees)
+ 
+ 
+ class Fodiwalk(Fodiwalk_base):
+@@ -46,7 +44,7 @@ class Fodiwalk(Fodiwalk_base):
+ 
+     VER_MAJ = "01"
+     VER_MIN = "00"
+-    DESCRIPTION = "Walk-augmented force-directed embedding (JAX, SELL-C-sigma)"
++    DESCRIPTION = "Walk-augmented force-directed embedding (JAX, flat kernel)"
+ 
+     def __init__(self, n_dim: int | None = None, lr: float = 1.0,
+                  seed: int | None = None, verbosity: int = 0,
+@@ -63,15 +61,12 @@ class Fodiwalk(Fodiwalk_base):
+         self.cfg = Config(**cfg)
+         self.seed = seed        # `self.rng` comes from the base class
+ 
+-        # The three stage specs, narrowed from `self.cfg` ONE time. They
+-        # are frozen, thus a stage cannot edit the configuration of another
+-        # one and `self.cfg` stays the single source.
++        # The three stage specs, narrowed from `self.cfg` ONE time and
++        # frozen, so a stage cannot edit another one's configuration.
+         self.aug_spec = AugmentSpec.from_config(self.cfg)
+         self.force_spec = ForceSpec.from_config(self.cfg)
+         self.plan_spec = PlanSpec.from_config(self.cfg)
+-        # the law, resolved once: `fuse_planes` picks the fused form, thus
+-        # the plane list follows from ONE name.
+-        self.law = self.force_spec.law
++        self.law = self.force_spec.law     # `fuse_planes` picks the fused law
+         self.force_fn = force_fn(self.law)
+ 
+         rule_kw = {"velocity": {"eta": eta},
+@@ -79,50 +74,40 @@ class Fodiwalk(Fodiwalk_base):
+                    "sqn": {"memory": sqn_memory}}.get(optim, {})
+         self.set_rule(optim, lr, **rule_kw)
+         if lr_decay == "linear":
+-            # lr_t = lr * (1 - epoch/epochs): at the last epoch this is
+-            # lr/epochs and not 0, thus the final step still moves.
++            # lr_t = lr*(1 - epoch/epochs): the last epoch still moves.
+             self.lr_schedule = lambda lr, ep, eps: lr * (1.0 - ep / max(1, eps))
+         elif lr_decay != "const":
+             raise ValueError(f"Unknown lr_decay {lr_decay!r}")
+ 
+         # filled by augment_graph / set_D
+-        self.stats = None          # the walk statistics
+-        self.info = {}             # the numbers a log prints
+-        self.freq = None           # the `freq` plane data, or None
++        self.stats, self.info, self.freq = None, {}, None
+         self.deg_from_A = None     # an explicit degree array, or None
+         self._D_given = None       # a matrix handed over by set_D
+-        self.plans, self.steps = [], []
++        self._plan_set = None      # the `embed.planner.PlanSet` of the last augment_graph
++        self.plans, self.steps, self.row_counts = [], [], []
+         self.plan_stats = None
+ 
+     # ---------------------------------------------------------- stage 1
+     def make_graph(self, data, **kwargs):
+-        """Stage 1. A STUB: it returns the graph it is given.
+-
+-        The graphs arrive as edge lists on disk and `make_graph.load` reads
+-        them. The stage stays in the API because a later project builds the
+-        graph from raw data (kNN, MST) and changes this method only.
+-        """
++        """Stage 1. A STUB: it returns the graph it is given. Stays in the
++        API because a later project builds the graph from raw data (kNN,
++        MST) and changes this method only."""
+         return data
+ 
+     # ---------------------------------------------------------- the walk
+     def graph_walk(self, A, n: int | None = None, rng=None, **kwargs):
+-        """The walks alone, and the statistics of the pairs they give.
+-
+-        A thin forward to `policies.graph_walk`. The default generator is
+-        `self.rng`, thus a call ADVANCES the one generator of the run.
+-        """
++        """The walks alone, and the statistics of the pairs they give. A
++        thin forward to `policies.graph_walk`; the default generator is
++        `self.rng`, thus a call ADVANCES the one generator of the run."""
+         n = A.shape[0] if n is None else n
+         rng = self.rng if rng is None else rng
+         return policies.graph_walk(A, n, self.aug_spec, rng)
+ 
+     # ---------------------------------------------------------- stage 2
+     def set_D(self, D, stats=None, freq=None, degrees=None):
+-        """Hand over a `D` that is already augmented, and skip the walks.
+-
+-        `augment_graph` then builds the planes and the plan from it alone --
+-        the path of a CACHED augmentation: com_youtube's needs ten minutes.
+-        `freq` aligns to `D.indices`; a law that reads it and gets none RAISES.
+-        """
++        """Hand over a `D` that is already augmented, and skip the walks --
++        the path of a CACHED augmentation. `freq` aligns to `D.indices`; a
++        law that reads it and gets none RAISES."""
+         self._D_given = D
+         self.stats = stats
+         self.freq = None if freq is None else np.asarray(freq)
+@@ -131,10 +116,9 @@ class Fodiwalk(Fodiwalk_base):
+ 
+     def augment_graph(self, G, **kwargs):
+         """Stage 2, then stage 3. `G` is un-augmented, unless `set_D`
+-        skipped the walks. Stage 2 gives `D` and `freq`; stage 3 reads
+-        them and builds the planes, the degree divisor, the force params
+-        and the plan. The comment below marks the boundary.
+-        """
++        skipped the walks. Stage 2 gives `D` and `freq`; stage 3 reads them
++        and builds the planes, the degree divisor, the force params, the
++        plan."""
+         if self._D_given is not None:
+             D = self._D_given
+         else:
+@@ -143,8 +127,7 @@ class Fodiwalk(Fodiwalk_base):
+             D = aug.D
+         self.D = D
+ 
+-        # ---- stage 3, from here down: everything that knows the law
+-        planes = self._build_planes(D)
++        planes = self._build_planes(D)     # stage 3 from here: the law's own data
+         degrees = self._build_degrees(D, G)
+         self.params = force_params(self.force_spec)
+ 
+@@ -152,43 +135,33 @@ class Fodiwalk(Fodiwalk_base):
+             plan_contract.check(self.law, planes, D)
+             plan_contract.check_degrees(degrees, D)
+ 
+-        ps = build_plans(D, planes, degrees, self.plan_spec, self.force_fn)
+-        self.plans, self.steps = ps.plans, ps.steps
+-        self.inv_deg_ext, self.chunk_rows = ps.inv_deg_ext, ps.chunk_rows
++        self._plan_set = build_plans(D, planes, degrees, self.plan_spec, self.force_fn)
++        ps = self._plan_set
++        self.plans, self.steps, self.row_counts = ps.plans, ps.steps, ps.row_counts
++        self.inv_deg, self.chunk_rows = ps.inv_deg, ps.chunk_rows
+         self.resident, self.plan_stats = ps.resident, ps.stats
+         return D
+ 
+     def _build_planes(self, D):
+         """The planes of `self.law`. `golden.py` and `check_api.py` call it."""
+-        return build_planes(self.law, D, self.freq, self.cfg.pairs,
+-                            self.cfg.policy)
++        return build_planes(self.law, D, self.freq, self.cfg.pairs, self.cfg.policy)
+ 
+     def _build_degrees(self, D, G):
+         """The divisor of the row sum. `golden.py` calls it directly."""
+-        return resolve_degrees(D, G, self.force_spec,
+-                               explicit=self.deg_from_A)
++        return resolve_degrees(D, G, self.force_spec, explicit=self.deg_from_A)
+ 
+     # ---------------------------------------------------------- stage 3
+     def forces(self, Z, D, row_start: int, row_end: int, key=None, **kwargs):
+-        """The dZ rows of `[row_start, row_end)`.
+-
+-        A chunk is a ROW RANGE, thus the first row picks the plan. The
+-        kernel runs over that chunk and the result is sliced: the plan
+-        groups rows by WIDTH and not by node id.
+-        """
++        """The dZ rows of `[row_start, row_end)`. The chunk loop and the
++        device-residency choice are `embed.planner.forces_of`'s (stage 3's
++        kernel-invocation logic, not this class's wiring); this method
++        only supplies `Z` and draws the drop key."""
+         if key is None:
+             self.key, key = jax.random.split(self.key)
+-        i = min(row_start // self.chunk_rows, len(self.plans) - 1)
+-        plan = self.plans[i]
+-        if not self.resident:
+-            plan = jax.tree_util.tree_map(jax.device_put, plan)
+-        full = self.steps[i](jnp.asarray(Z, dtype=jnp.float32),
+-                             plan, self.inv_deg_ext, self.params)
+-        out = drop_steady_rate(full[row_start:row_end], key,
+-                               self.cfg.random_drop_rate,
+-                               strategy=self.cfg.drop_strategy)
+-        del full, plan
+-        return out
++        Z = jnp.asarray(Z, dtype=jnp.float32)
++        out = forces_of(self._plan_set, Z, self.params, row_start, row_end)
++        return drop_steady_rate(out, key, self.cfg.random_drop_rate,
++                                strategy=self.cfg.drop_strategy)
+ 
+     def embed(self, G, epochs: int = 1000, lr: float | None = None, Z=None,
+               batch_count: int = 1, epsilon: float | None = None, **kwargs):
+diff --git a/fodiwalk/tests/test_contracts.py b/fodiwalk/tests/test_contracts.py
+index 07dbe92..6b47b6d 100644
+--- a/fodiwalk/tests/test_contracts.py
++++ b/fodiwalk/tests/test_contracts.py
+@@ -13,7 +13,7 @@ import numpy as np
+ import pytest
+ import scipy.sparse as sp
+ 
+-from forcedirected import csr, sell_c_sigma
++from forcedirected import csr
+ from fodiwalk.embed import forces, plan_contract
+ from fodiwalk.embed.plan_contract import PlaneContractError
+ from fodiwalk.augment_graph import pairs as PR
+@@ -118,59 +118,50 @@ def test_embed_imports_only_embed():
+ 
+ 
+ # ===========================================================================
+-# B2 -- the kernel, `forcedirected/sell_c_sigma.py`, and the plane contract
++# B2 -- the kernel, `forcedirected/flat_batch.py`, and the plane contract
+ # ===========================================================================
+-def test_b2_make_plan_raises_on_a_wrong_plane_shape(tiny):
+-    """B2.1."""
+-    A, n = tiny
+-    deg = np.diff(A.indptr).astype(np.float64)
+-    with pytest.raises(ValueError, match="expected"):
+-        sell_c_sigma.make_plan(A, (np.ones(A.nnz - 1),), degrees=deg)
++# B2.1 (a wrong plane shape raises), B2.2 (a hub row's pairs all survive)
++# and B2.4/I3 (a pad cell contributes zero) tested `sell_c_sigma.make_plan`'s
++# hub-split / ladder / pack pipeline directly -- rungs of `(nb, R, k)`
++# tiles, a per-rung pad fraction, a `k_max` that forced a split. That
++# pipeline is DELETED (2026-09-02, `forcedirected/flat_batch.py` replaced
++# it); its own tests go with it, and `plan_contract.check_plan` (I3) that
++# B2.4 called is deleted too -- see that module's docstring for why no
++# equivalent check exists for the flat batch. B2.1's shape check on a
++# plane still holds, at the seam `plan_contract.check` guards
++# (`test_i1_a_wrong_plane_shape_raises` below); B2.2's "every stored pair
++# survives" and B2.4's "a pad cell pushes nothing" are asserted end to end
++# on the flat kernel by `fodiwalk/tests/test_golden.py` and the oracle
++# comparison of `agentic-log/01.kernel-agent/`.
+ 
+ 
+-def test_b2_hub_split_keeps_every_row(tiny):
+-    """B2.2. A row wider than `k_max` splits, and the row set survives."""
+-    A, n = tiny
+-    deg = np.diff(A.indptr).astype(np.float64)
+-    plan, inv, stats = sell_c_sigma.make_plan(
+-        A, (A.data,), degrees=deg, k_max=8, b_cells=64)
+-    assert stats["n_split"] > 0
+-    seen = {}
+-    for rows, nbrs, tile in plan:
+-        rows = np.asarray(rows).ravel()
+-        nbrs = np.asarray(nbrs).reshape(rows.size, -1)
+-        tile = np.asarray(tile).reshape(rows.size, -1)
+-        for r, nb, tl in zip(rows, nbrs, tile):
+-            if r == n:                                   # a pad ROW
+-                continue
+-            seen.setdefault(int(r), []).extend(
+-                int(x) for x, t in zip(nb, tl) if t != 0)
+-    for u in range(n):
+-        want = set(A.indices[A.indptr[u]:A.indptr[u + 1]].tolist())
+-        assert set(seen.get(u, [])) == want
+-
+-
+-def test_b2_a_pad_cell_contributes_zero_for_a_law_with_a_constant(tiny):
+-    """B2.4 and I3. `fdlinear` has the constant `kr`, thus a pad cell that
+-    did not carry 0 in every plane would push."""
++# ===========================================================================
++# B2b -- a pad ENTRY of the flat batch (the bucket pad, not a tile pad)
++# ===========================================================================
++def test_b2_a_bucket_pad_entry_contributes_zero_for_a_law_with_a_constant(tiny):
++    """The flat-batch equivalent of the old B2.4/I3: `fdlinear` has the
++    constant `kr`, thus a pad entry that did not carry `h = 0` (or land on
++    `v = u`) would push. `pad_floor=1` forces the smallest bucket, so a
++    tiny CSR still gets at least one pad entry to check."""
+     import jax.numpy as jnp
++    from forcedirected.flat_batch import build_batch
+     A, n = tiny
+     freq = np.ones(A.nnz)
+-    deg = np.diff(A.indptr).astype(np.float64)
+-    plan, inv, stats = sell_c_sigma.make_plan(
+-        A, (A.data, freq), degrees=deg, k_max=8, b_cells=64)
+-    assert stats["pad_frac"] > 0                    # the test needs padding
+-    plan_contract.check_plan(plan, 2)
++    u_glob, u_loc, v, tiles, R, m_real = build_batch(
++        A, (A.data, freq), 0, n, pad_floor=1)
++    assert R == n
++    h, fq = np.asarray(tiles[0]), np.asarray(tiles[1])
++    assert u_glob.size > m_real           # the test needs an actual pad
++    pad = (h == 0) & (fq == 0)
++    assert pad[m_real:].all() and not pad[:m_real].any()
++    assert np.array_equal(v[m_real:], u_glob[m_real:])   # Zdiff = 0 there too
+     params = dict(k1=0.999, k4=0.01, kr=1.0, sign=-1.0)
+-    for rung in plan:
+-        h, fq = np.asarray(rung[2]), np.asarray(rung[3])
+-        pad = (h == 0) & (fq == 0)
+-        # x is exactly 0 on a pad cell too; take x = 1 to show that the LAW
+-        # alone vanishes, and not only the kernel's `x == 0` guard.
+-        F = np.asarray(forces.fdlinear(jnp.ones_like(jnp.asarray(h)),
+-                                       (jnp.asarray(h), jnp.asarray(fq)),
+-                                       params))
+-        assert np.all(F[pad] == 0.0)
++    # x is exactly 0 on a pad entry too (v = u_glob); take x = 1 to show
++    # the LAW alone vanishes, and not only the kernel's `x == 0` guard.
++    F = np.asarray(forces.fdlinear(jnp.ones_like(jnp.asarray(h)),
++                                   (jnp.asarray(h), jnp.asarray(fq)),
++                                   params))
++    assert np.all(F[pad] == 0.0)
+ 
+ 
+ # ===========================================================================
+diff --git a/fodiwalk/tests/test_parity.py b/fodiwalk/tests/test_parity.py
+index 0fe93b0..3a67f52 100644
+--- a/fodiwalk/tests/test_parity.py
++++ b/fodiwalk/tests/test_parity.py
+@@ -48,45 +48,60 @@ GRID = dict(weight="min_gap", far_bias=0.75, far_weight=100.0)
+ FDL = dict(force="fdlinear", k4=1.0, kr=1.0)
+ 
+ 
++def _assert_one_row_one_segment(A, **cfg):
++    """The flat kernel's replacement for the old `n_split == 0` precondition.
++
++    `sell_c_sigma` needed `n_split == 0` as a CONSERVATIVE PROXY for "max
++    in-batch owner multiplicity < 3": a hub-split row put two VIRTUAL rows
++    on one scatter address, and 3+ such addends cost exactness (2 commute
++    safely). REPAIR, 2026-09-02: the flat kernel (`forcedirected/flat_batch.py`)
++    replaced SELL-C-sigma and has no hub split and no virtual row at all --
++    `embed.planner.build_batch` gives every row exactly one local segment
++    id, straight from its own CSR span. That makes the analogous fact
++    structural and not something to measure: a `segment_sum` address can
++    never receive two DIFFERENT rows' pairs, and one row's pairs can never
++    land on two different addresses. This checks that directly, on the
++    actual batch this scenario builds, in place of reading a plan stat
++    that no longer exists (`n_split`, `pad_frac` were SELL-C-sigma layout
++    fields; the flat batch has neither).
++
++    Per the ORIGINAL docstring's own instruction, carried forward: do NOT
++    delete this assert if a future change ever fails it, and do NOT relax
++    the tolerances below to compensate -- a broken one-row-one-segment
++    mapping is a real defect of the kernel, not a reason to loosen the
++    numbers that depend on it.
++    """
++    from fodiwalk import Fodiwalk
++    fw = Fodiwalk(n_dim=8, seed=42, **cfg)
++    fw.augment_graph(A)
++    assert len(fw.plans) == 1, "this check assumes chunks == 1 (the default)"
++    u_glob, u_loc, v, tiles = fw.plans[0]
++    # `build_batch` sets `u_glob = u_loc + chunk_start`; the one chunk of a
++    # `chunks == 1` run has `chunk_start == 0`, so the two arrays are
++    # IDENTICAL exactly when the row <-> segment map is a bijection.
++    assert np.array_equal(u_glob, u_loc), (
++        "a local segment id no longer maps 1:1 to one global row -- the "
++        "flat kernel's structural exactness guarantee broke")
++
++
+ def test_p1_fdlinear_on_cora_200_epochs(cora):
+     """P1. EXACT: the path is `uniform_walks`, thus it is bit-exact.
+ 
+     `dz = 0.5016  auc = 0.9962  r2_dist = 0.253`, and the fused plane must
+     give the same numbers as the three-plane reference.
+ 
+-    The tight `abs=5e-5` tolerances hold because of the PLAN, and not
+-    because the graph is Cora. A row wider than `k_max` splits into virtual
+-    rows that share an owner id, and `dZ.at[rows].add(...)` then
+-    accumulates in a free order on a GPU.
+-
+-    `n_split == 0` is asserted below as a CONSERVATIVE PROXY. The real
+-    invariant is `max in-batch owner multiplicity < 3`: three addends
+-    landing on one address cost exactness, and splitting alone does not.
+-    `n_split == 0` forces multiplicity 1, thus it IMPLIES the real
+-    condition; it is not equivalent to it. `forcedirected/PARITY.md`
+-    section 5 is the proof -- an augmented Cora `D` at `n_split = 3` with
+-    multiplicity 2 was bit-identical at 0.000e+00. The proxy is used
+-    because `n_split` is already in `plan_stats` and the multiplicity is
+-    not.
+-
+-    THUS, WHEN THIS ASSERT FAILS: re-measure the multiplicity. Do NOT
+-    relax the tolerances, and do NOT delete the assert. A legitimate change
+-    can reach `n_split = 2` with multiplicity still 2 and stay exact; the
+-    repair is then to assert the multiplicity directly, as
+-    `forcedirected/tests/test_parity.py` does with `max_owner_multiplicity`.
+-    Without the guard, such a change surfaces as an `acc`/`f1` mismatch and
+-    reads as a defect of the physics, which is the wrong diagnosis this
+-    scenario must not invite.
++    The tight `abs=5e-5` tolerances hold because of the KERNEL, and not
++    because the graph is Cora: `_assert_one_row_one_segment` below is the
++    precondition -- see its own docstring for what it replaced and why.
+     """
+     A, n = cora
++    _assert_one_row_one_segment(A, pairs="nbr_walk", weight="min_gap",
++                                force="fdlinear", k4=0.01, kr=1.0)
+     for fuse_planes in (False, True):
+         out = run(A, n, dim=64, epochs=200, lr=1.0, seed=42, optim="plain",
+                   pairs="nbr_walk", weight="min_gap", force="fdlinear",
+                   k4=0.01, kr=1.0, fuse_planes=fuse_planes)
+         assert out["dnnz"] == 209_542
+-        # The precondition of every tolerance below. See the docstring.
+-        assert out["plan"]["n_split"] == 0
+-        assert out["plan"]["pad_frac"] == pytest.approx(0.20059361671282838)
+         assert out["dz"] == pytest.approx(0.5016, abs=5e-5)
+         assert out["acc"] == pytest.approx(0.9754, abs=5e-5)
+         assert out["f1"] == pytest.approx(0.9752, abs=5e-5)
