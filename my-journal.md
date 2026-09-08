@@ -1,5 +1,9 @@
 This document is maintained by the user.
 
+[Tue Sep  8 02:35:44 AM PDT 2026]
+
+There is a big issue with the implementation. The parameters and functions are not defined where they should be. For example, the "divide by deg(u)" which is supposed to be parts of the force factor, is now in sell-c-sigma. Or the force factor calculation is in planes in graph augmentation stage instead of graph embedding stage. This needs immediate attention. I might have to rewrite it.
+
 [Sun Sep  6 10:21:20 PM PDT 2026]
 
 fodiwalk a simple force function seems to be the most performant variation out there.
