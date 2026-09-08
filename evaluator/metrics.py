@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["DISTANCES", "FEATURES", "distance", "feature"]
+from .config import RECON_MAX_N
+
+__all__ = ["DISTANCES", "FEATURES", "distance", "feature", "knn"]
 
 _EPS = 1e-12
 
@@ -148,3 +150,104 @@ def feature(Z, u, v, kind="hadamard"):
     """
     fn = _pick(FEATURES, kind, "feature")
     return fn(Z[np.asarray(u)], Z[np.asarray(v)])
+
+
+# ---------------------------------------------------------------------------
+# knn -- the one path through which every all-pairs operation runs
+# ---------------------------------------------------------------------------
+def _poincare_pair(u, v):
+    """The Poincare distance of two single rows. `sklearn`'s callable
+    metric calls this once per pair, not once per batch; it reuses
+    `_poincare` at batch size 1 so the formula stays one copy."""
+    return float(_poincare(u[None, :], v[None, :])[0])
+
+
+def _self_exclude(idx, dist, self_idx):
+    """Drop each query's own row from its `k + 1` neighbours. Returns
+    `(n, k)` arrays. If a row's self match is missing (the approximate
+    index can miss it), the farthest of the `k + 1` is dropped instead, so
+    the output width never changes."""
+    n_rows, kp1 = idx.shape
+    cols = np.arange(kp1)
+    self_mask = idx == self_idx[:, None]
+    found = self_mask.any(axis=1)
+    drop_col = np.where(found, np.argmax(self_mask, axis=1), kp1 - 1)
+    keep = cols[None, :] != drop_col[:, None]
+    return (idx[keep].reshape(n_rows, kp1 - 1),
+            dist[keep].reshape(n_rows, kp1 - 1))
+
+
+def _knn_brute(Z, self_idx, k, metric):
+    import sklearn
+    from sklearn.neighbors import NearestNeighbors
+
+    metric_arg = _poincare_pair if metric == "poincare" else metric
+    # working_memory=512 caps the row block sklearn's brute search holds
+    # live at once, so it never allocates `(len(queries), n)`. The
+    # context form applies the budget for this call only and restores the
+    # global default after, per PRD-v2 B5.
+    with sklearn.config_context(working_memory=512):
+        model = NearestNeighbors(n_neighbors=k + 1, algorithm="brute",
+                                  metric=metric_arg, n_jobs=-1)
+        model.fit(Z)
+        dist, idx = model.kneighbors(Z[self_idx])
+    idx, dist = _self_exclude(idx, dist, self_idx)
+    return idx, dist, "brute"
+
+
+def _knn_approx(Z, self_idx, k, metric):
+    from pynndescent import NNDescent
+
+    # `n_neighbors` at construction sets the approximate graph's own
+    # connectivity, not the count returned per query; pynndescent's
+    # documented default is 30, and a graph built at `k + 1` when `k` is
+    # small starves the search of recall regardless of query-time `k`.
+    build_k = max(k + 1, 30)
+    index = NNDescent(Z, n_neighbors=build_k, metric=metric)
+    idx, dist = index.query(Z[self_idx], k=k + 1)
+    idx, dist = _self_exclude(idx, dist, self_idx)
+    return idx, dist, "pynndescent"
+
+
+def knn(Z, queries, k, metric="euclidean", exact=None):
+    """The `k` nearest OTHER rows of `Z` to each row `queries` indexes
+    into `Z`. Returns `(idx, dist, path)`: `idx` and `dist` are `(len(
+    queries), k)`; `path` is `"brute"` or `"pynndescent"`, the search that
+    ran -- a record that drops this cannot say whether an index was
+    approximate.
+
+    Every all-pairs search in this package goes through here (PRD-v2
+    invariant 4). Nothing here allocates `(len(queries), n)`: the exact
+    path is `sklearn.neighbors.NearestNeighbors(algorithm="brute")` under
+    `working_memory=512`, which chunks its own search; the approximate
+    path is `pynndescent.NNDescent`, an index, not a full distance table.
+
+    `exact=None` (default) picks the exact path at `len(Z) <=
+    config.RECON_MAX_N` rows and the approximate path above it.
+    `exact=True` or `exact=False` forces the path. Above `RECON_MAX_N`
+    rows the exact path still runs correctly if forced; it is slow there,
+    which is why the default switches over.
+
+    `metric="poincare"` runs on the exact path only, as a Python callable
+    passed to `sklearn` -- slow, because no C loop backs it, and exact.
+    Use it on small and medium graphs (T1, T2); `pynndescent` has no
+    matching path, so `metric="poincare"` with the approximate path
+    raises.
+
+    `queries` indexes into `Z`; self is excluded by asking for `k + 1`
+    neighbours and dropping the query's own row.
+    """
+    Z = np.asarray(Z)
+    self_idx = np.asarray(queries)
+    n = Z.shape[0]
+    use_exact = (n <= RECON_MAX_N) if exact is None else bool(exact)
+
+    if metric == "poincare" and not use_exact:
+        raise ValueError(
+            "knn: metric='poincare' has no pynndescent path; it runs "
+            "exact only (pass exact=True), and only fits small and "
+            "medium graphs there.")
+
+    if use_exact:
+        return _knn_brute(Z, self_idx, k, metric)
+    return _knn_approx(Z, self_idx, k, metric)

@@ -18,6 +18,7 @@ local to one function.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -246,6 +247,61 @@ def load_embedding(src, n=None):
         "zero_rows": zero_rows,
     }
     return Z, info
+
+
+# -- context sidecar ------------------------------------------------------
+
+
+def read_context(path):
+    """Read a context sidecar: one JSON object of `Context` field names to
+    values. JSON only -- this project carries no YAML reader. Returns the
+    raw dict; the caller builds `Context(**dict)`.
+    """
+    with open(path) as f:
+        return json.load(f)
+
+
+# -- profile cache ----------------------------------------------------------
+
+_PROFILE_CACHE_DIR = Path("data_cache/evaluator/profile")
+
+
+def _graph_hash(A):
+    """A CACHE KEY for `A`, not an identity: sha1 of `(n, m,
+    A.indptr[-1], A.indices[:1000], A.indices[-1000:])`. Cheap to compute
+    and it can collide in principle, so nothing may depend on it for
+    correctness -- only for a cache lookup that a miss falls through
+    safely.
+    """
+    A = A.tocsr()
+    n = A.shape[0]
+    m = A.nnz // 2
+    nnz = int(A.indptr[-1])
+    h = hashlib.sha1()
+    h.update(f"{n}:{m}:{nnz}:".encode())
+    h.update(A.indices[:1000].tobytes())
+    h.update(A.indices[-1000:].tobytes())
+    return h.hexdigest()
+
+
+def write_profile_cache(A, profile):
+    """Write `profile` (a dict) to `data_cache/evaluator/profile/<graph
+    hash>.json`, keyed by `_graph_hash(A)`. Returns the path written.
+    """
+    path = _PROFILE_CACHE_DIR / f"{_graph_hash(A)}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(profile, f, indent=2)
+    return path
+
+
+def read_profile_cache(A):
+    """The cached profile dict for `A`, or `None` on a miss."""
+    path = _PROFILE_CACHE_DIR / f"{_graph_hash(A)}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 # -- report writing --------------------------------------------------------
