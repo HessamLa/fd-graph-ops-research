@@ -295,7 +295,8 @@ def main():
                   "fdhop": ("k1", "k4", "kr"),
                   "fdhop2": ("k1", "k4", "kr"),
                   "fdhop_min": ("k1", "k4", "kr"),
-                  "fdhop_all": ("k1", "k2", "k4", "kr")}
+                  "fdhop_all": ("k1", "k2", "k4", "kr"),
+                  "fdhop_all_freq": ("k1", "k2", "k4", "kr")}
     scalars = {"k1": args.k1, "k2": args.k2, "k4": args.k4,
                "kr": args.kr, "sign": args.sign}
     fparams = {k: scalars[k] for k in LAW_PARAMS.get(args.force, ())}
