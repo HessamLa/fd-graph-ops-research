@@ -10,7 +10,7 @@ summary:[a timestamped and very concise summary of everything done under the ses
 ## AGENTS
 
 ---
-session-id: fdmap-68 [54807a]
+session-id: `evaluator` — the ROLE, claimed 2026-08-26, set with /rename on 2026-09-02. The role is the key. Two weaker ids, both recorded only as hints: the transport name churns (this session was fdmap-68 [54807a], then fdmap-65 [20555e], within one hour), and the transcript UUID 6f9d36c7-4699-47c9-add7-b451b41e4d84 is stable but NOT UNIQUE — a forked session appends to its parent's transcript and carries the parent's id, so two live sessions can share one UUID (proved by the fodiwalk session, 2026-09-02). Address by role.
 title: evaluator
 purpose: Own the `evaluator/` package. Build it, verify it, and control every change to it. One place to score a graph embedding, so a number from one run compares to a number from another.
 summary:
@@ -46,3 +46,46 @@ summary:
 - `forcedirected/sell_c_sigma.py:152` names a dead `sellcsigma/PARITY.md` path ON PURPOSE. The recovery script `reconstruct_pre_unification.py` keys on that file's sha256 and its regex matches that exact string. Comment, regex and `SOURCE_SHA_2026_08_25` must change together in one edit, then the gate re-run.
 - Wrote the `plain-english` rule for comments and docstrings into the repo `CLAUDE.md` under Coding, on the user's instruction.
 - A full tree backup, tested end to end, is outside the repo at `/home/h/gnn/fd-graph-embedding/fdmap-backup-20260826T081231Z`. The tag `fodiwalk-pre-refactor` resolves to HEAD and means "before ALL of 2026-08-20 onward" — it is NOT a revert point for this working tree. Do not `git checkout`, `git stash` or revert to it.
+
+---
+session-id: fd084f99-dab1-4ce5-a2b5-7c74e42c28d8 -- SHARED, NOT AN IDENTIFIER.
+  A fork appends into the parent transcript under the parent sessionId, so this
+  UUID does not name one session. Parent, whose work this entry records through
+  2026-08-31: transport ref [6bad1b]. Fork, from 2026-09-02T02:00Z: transport ref
+  [f9c582], its own entry below. Refs churn; the UUID is shared; neither alone
+  identifies a session. Proved 2026-09-02 by writing a unique string and finding
+  it in the parent's transcript, which holds exactly one sessionId.
+title: fodiwalk (parent)
+purpose: Own the `fodiwalk/` package. Cut its memory use so a million-node graph runs, then measure walk policies, force functions, optimisers and schedules against node2vec.
+summary:
+- `fodiwalk/` is SHARED between the parent [6bad1b] and the fork [f9c582] as of 2026-09-02. The parent's work is finished and pushed at `5442889`; nothing of it is in flight. Neither owns `forcedirected/` (fdmap-b3, gone) or `evaluator/` (the evaluator session).
+- 2026-08-28: rewrote the augmentation carrier row-blocked. `augment_graph/rows.py` (RowStats, RowCSR) and `augment_graph/row_merge.py` replace the global argsort with a per-block searchsorted rank-merge. Peak RSS 3055 -> 1195 MB at 150k nodes, and about 2x faster. The full 1.13M-node graph finished for the first time: 4630 MB, 91 s.
+- 2026-08-28: the user ruled that `D` is not stored. Per node: three flat arrays (partner id, min hop, frequency), each with its own data type. Two strategies, precomputed and streaming. Bit-exactness is NOT a gate for this line of work; judge by peak RSS and by the score.
+- 2026-08-29: streaming driver `experiments/fodiwalk-streaming/bench_stream.py`. Memory stops tracking graph size: 922 MB at 2,708 nodes, 2,749 MB at 1,696,415 nodes / 11,095,298 edges.
+- 2026-08-29: dim-128 against node2vec on the 1M graph. node2vec 764.6 s / 2212 MB / acc 0.9776 / f1 0.9780 / auc 0.9984 / hop R2 0.043. fodiwalk 50 epochs const lr 1018.1 s / 1975 MB / 0.9771 / 0.9769 / 0.9970 / 0.428.
+- THE EFFECTIVE-LEARNING-RATE LAW: effective lr = lr x the DC gain of the update rule, and the stability edge is 1.0. Gains: plain/sgd/velocity 1; momentum and nesterov 1/(1-beta) = 10 at beta 0.9; generalised momentum m = beta*m + alpha*dZ has gain alpha/(1-beta), so alpha+beta = 1 IS velocity. The law predicted all 16 recorded outcomes with no misses, divergences included.
+- GLOBAL RULE from the user: no learning rate is ever 1.0. Use 0.999 or less, and a decay schedule starts at 0.999 or less. This binds the effective lr too.
+- BASELINE DIMENSIONS from the user: 128d for accuracy, f1, auc and hop R2 — that is, for walk methods and force functions. 64d for optimisers, training schedules and convergence rates. 32d or 16d only for a quick look at a new idea.
+- Hop R2 splits by average degree near 3, not by graph size, and it is structural: 10x the epochs did not move `roadnet_ca`.
+- Optimiser verdict: `plain`, lr 0.999, constant. Linear decay hurts all six rules by the same amount at 50 and at 200 epochs, so it is not under-training.
+- GPU is a GeForce GTX 950 with 2048 MiB. JAX preallocates 75% by default; `XLA_PYTHON_CLIENT_MEM_FRACTION=0.95` is the fix. `XLA_PYTHON_CLIENT_PREALLOCATE=false` does not help. Six dim-128 runs (`roadnet_ca`, `ncbi_taxonomy`) still get OOM — Z alone is 960 MB and 1434 MB. Not yet re-run on CPU.
+- Records: `experiments/fodiwalk-streaming/FINDINGS.md` (includes a corrections section), `REPORT.md`, `experiments/fodiwalk/REPORT_1M.md`, `fodiwalk/dev-docs/CATALOG.md` section 29, `fodiwalk/dev-docs/IDEA-hierarchical-freeze.md` (a future project, not built).
+- Tags on origin: `fodiwalk-pre-stagemove`, `fodiwalk-pre-memory`, `fodiwalk-post-memory`. `fodiwalk-old/` is the user's untracked reference clone — read it, write nothing.
+
+---
+session-id: transport ref [f9c582]. Forked 2026-09-02T02:00Z from the transcript
+  fd084f99-dab1-4ce5-a2b5-7c74e42c28d8, which it SHARES with its parent [6bad1b]
+  and therefore cannot use as a key. The role name is the key; the ref and the
+  UUID are hints only.
+title: dense-kernel
+purpose: Remove SELL-C-sigma from `forcedirected/`, put a flat batched kernel in its place, and measure what that costs in memory and in time.
+summary:
+- Owns the post-fork work only. Everything before 2026-09-02T02:00Z in the entry above belongs to the parent [6bad1b]; this session inherited the record of it, not the doing of it.
+- WHY: the owner ruled that a bounded batch of rows that fits on the GPU is plain batch processing, so the sorted-and-tiled layout earns nothing.
+- THE DESIGN, and the correction that shapes it: a NAIVE dense batch, padding every row out to the widest row present, would be WORSE than SELL-C-sigma, because one hub row drags the whole batch to its width. The build is a flat pair array per row batch plus a segment id, reduced by `segment_sum`. No padding to the widest ROW -- that is the win over tiles. The pair AXIS is still bucketed to `PAD_TO = 1 << 16`, because in JAX a new pair count is a new shape and a fresh compile.
+- BASELINE, measured 2026-09-02 on the SELL-C-sigma code before any edit, and the before side of the comparison: pubmed, `nbr_walk`, `fdlinear`, `plain`, lr 0.999, 200 epochs. 16 dimensions over seeds 42-46: embed 3.46 s, host RSS 1274 MB, GPU peak 115 MiB, acc 0.9747, f1 0.9744, auc 0.9962, hop R2 0.338. 128 dimensions over seeds 42-44: embed 11.33 s, host RSS 1281 MB, GPU peak 179 MiB, acc 0.9839, f1 0.9838, auc 0.9984, hop R2 0.445. Runner: `experiments/fodiwalk-densekernel/run_bench.sh`.
+- `bench_fodiwalk.py` defaults `--lr` to 1.0, which breaks the owner's global rule that no learning rate is ever 1.0. Every run passes `--lr 0.999`.
+- The driver's `rss` field is HOST memory only. The runner samples `nvidia-smi` once a second so the card peak is recorded beside it.
+- `forcedirected-old/` renamed to `forcedirected_old/` so Python can import it (a hyphen cannot be). Nothing inside is edited; it is the frozen before side. `fodined` is DEPRECATED by the owner and its forwarder now reads `forcedirected_old.sell_c_sigma`.
+- FOUR TRAPS, from the parent [6bad1b], all forwarded to the rewrite: the pair axis MUST be bucketed or JAX recompiles every batch; `segment_sum` needs a static `num_segments` (`bench_stream.py:287`); `fodiwalk/embed/planner.py:87` and `:117` put EVERY chunk's plan on the card and leave it, so `--chunks` does not bound device memory and a flat kernel that inherits that shape will be blamed for it; `forcedirected/sell_c_sigma.py:308` casts planes to float32 on purpose, so a float64 flat kernel fails a 1e-3 parity gate for a reason that is not a defect.
+- OPEN: deleting `sell_c_sigma.py` breaks `reconstruct_pre_unification.py`, which keys on that file's sha256. That is fdmap-b3's design, b3 is gone, and the decision is the owner's.
