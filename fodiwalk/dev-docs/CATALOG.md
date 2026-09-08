@@ -2633,3 +2633,159 @@ annealing.
 
 Provenance: `experiments/fodiwalk-streaming/optim_pubmed.tsv`;
 `FINDINGS.md` section 9.
+
+---
+
+## 30. UPDATE 2026-09-02 -- `flat_batch`, the kernel that replaced SELL-C-sigma, was measured and REVERTED
+
+**Adopted at:** nothing. This entry records a change that was built,
+measured and taken back out the same day. It is here because the next
+person to have the same idea should read the numbers first.
+
+Full report: `experiments/fodiwalk-densekernel/REPORT.md`. The code is kept
+at `forcedirected_removing_sell-C-sigma_attempt/`, with the `fodiwalk` half
+as `fodiwalk-side.patch` inside it. Nothing of it is live.
+
+### The entity: `flat_batch`, a kernel with no layout
+
+**What it is.** A replacement for `forcedirected/sell_c_sigma.py` that
+holds one FLAT array of `(row, partner)` pairs for a row batch, plus a
+segment id for each pair, and reduces it with `jax.ops.segment_sum`. It has
+no geometric ladder, no width sorting, no hub split and no padded tiles. A
+row is never padded out to another row's width.
+
+**How it works.** For one batch, with `u` the owning row of each pair and
+`v` the partner:
+
+```python
+Zdiff  = Z[v] - Z[u]
+x      = jnp.sqrt(jnp.sum(Zdiff * Zdiff, axis=-1))
+x_safe = jnp.where(x == 0, 1.0, x)
+F_mag  = force_fn(x, planes, params)          # the law, unchanged
+scale  = jnp.where(x == 0, 0.0, F_mag / x_safe)
+F      = jax.ops.segment_sum(Zdiff * scale[:, None], u_loc, R)
+F      = F * inv_deg[rows][:, None]
+```
+
+This is `sell_c_sigma.step`'s arithmetic with the tile axis removed. The
+physics is untouched: `fdlinear` and `fdlinear_fused` are unchanged line
+for line, and `params` stays traced, so a sweep against one `D` still never
+recompiles.
+
+**"Flat" is not "pad-free".** The pair AXIS is still bucketed to a power of
+two, because in JAX every distinct pair count is a distinct compiled shape.
+A pad entry carries `h = 0`, which the law's own `live` test zeroes, and
+its partner equal to its own row, so `Zdiff` is 0 as well -- the same
+double safety the tiled pad cells had. What the flat form removes is
+padding to the WIDEST ROW, and that is the only padding SELL-C-sigma's
+sorting existed to reduce.
+
+### Why it was reverted
+
+pubmed, `nbr_walk`, `fdlinear`, `plain`, lr 0.999, 200 epochs, one job at a
+time; 16d over five seeds, 128d over three.
+
+| | 16d sellc | 16d flat | 128d sellc | 128d flat |
+| --- | --- | --- | --- | --- |
+| embed | 3.46 s | **14.30 s** | 11.33 s | **48.30 s** |
+| host RSS | 1274 MB | 1384 MB | 1281 MB | 1391 MB |
+| GPU peak | 115 MiB | **183 MiB** | 179 MiB | **307 MiB** |
+| accuracy | 0.9747 | 0.9745 | 0.9839 | 0.9838 |
+| hop R2 | 0.3382 | 0.3384 | 0.4447 | 0.4447 |
+
+4.1x to 4.3x slower, 59% to 72% more card memory, 8.6% more host memory,
+and every quality score within 2e-4. **The physics was right and the
+performance was worse.** The spread across seeds was nil: 14.3 s on all
+five 16d seeds, 48.3 s on all three 128d seeds.
+
+### The finding, and it corrects a belief this catalog held
+
+**SELL-C-sigma's rung ladder was doing TWO jobs, and the sorting was the
+less important one.**
+
+    lax.scan over rungs   BOUNDED the live intermediate to one rung
+    the (R, k, d) reduce  a dense sum along k, which a GPU does well
+
+`flat_batch` keeps neither. One `segment_sum` over a whole chunk's
+2,238,752 pairs materialises an `(m, d)` intermediate and pays a
+scatter-add per row, and that cost grows with `d` -- which is why 128
+dimensions is hurt more than 16 (+326% against +313% in time, +72% against
++59% on the card).
+
+The premise that opened this work -- "a bounded batch of rows that fits on
+the card is plain batch processing, so the layout earns nothing" -- is
+half right. The layout earns nothing through its sorting. It earns a great
+deal through its scan.
+
+**The one thing the flat form won:** the host-side build. Augment + plan
+fell 12.3% at 16d and 6.2% at 128d, because no ladder is built, no rows
+sorted, no tiles packed. About one tenth of a second, bought at four times
+the embed cost.
+
+### The fix that was NOT tried
+
+The loss is in the reduction, not in the flat layout. **Scan the flat pair
+array in fixed-size BLOCKS**: bounded intermediate, one reused compiled
+shape, and still no ladder, no hub split, no width sorting and no per-row
+padding. It is a change inside `flat_batch.step`, not a return to
+`sell_c_sigma.py`. This campaign did NOT measure the flat form with a
+bounded reduction, so it does not settle whether the flat idea is wrong --
+only that this build of it lost.
+
+Provenance: `experiments/fodiwalk-densekernel/REPORT.md`;
+`experiments/fodiwalk-densekernel/{sellc,dense}.tsv` and `*.gpu.tsv`;
+`forcedirected_removing_sell-C-sigma_attempt/flat_batch.py`;
+`agentic-log/00.master-agent/` and `agentic-log/01.kernel-agent/`.
+
+---
+
+## 31. DEFECT 2026-09-02 -- `chunks` and `batch_count` are uncoupled, and rows outside chunk 0 never move
+
+**Status: OPEN. Present in the live tree.** Found by the `flat_batch`
+attempt above and confirmed from source independently of it. It survived
+the revert, because it was never the new kernel's defect.
+
+**What it is.** `fodiwalk/model.py::forces()` picks ONE chunk from
+`row_start` and slices that chunk's result:
+
+```python
+i = min(row_start // self.chunk_rows, len(self.plans) - 1)
+full = self.steps[i](...)          # only chunk i's rows are non-zero
+out = drop_steady_rate(full[row_start:row_end], ...)
+```
+
+`ForceDirected.embed` defaults `batch_count=1`, so it calls
+`forces(0, n)` ONCE per epoch. That picks chunk 0, and every row belonging
+to chunks 1..k comes back ZERO -- every epoch, for the whole run. Those
+rows never move off their random initial embedding, and nothing raises.
+
+**Why it never surfaced.** `sell_c_sigma.step` always allocates a full
+`(n, d)` `dZ` with `jnp.zeros_like(Z)`, whatever chunk's plan it ran, so
+the slice always fits and the zeros look like a legitimate answer. The flat
+kernel returned only its own chunk's rows, and the shape mismatch raised on
+the first epoch -- which is how the defect was found.
+
+**The invariant was written down and never enforced.**
+`forcedirected/force_directed.py`'s docstring states "the batch and the
+chunk are the same object", but no code couples `batch_count` to
+`cfg.chunks`.
+
+**It is recorded in the golden baseline as correct output.**
+`fodiwalk/tests/golden.py`'s `walk_chunks2` case runs `chunks=2` with the
+default `batch_count=1`, so `golden_baseline.json` holds the frozen-row
+result as the expected answer. Measured on cora: rows 1354-2707 keep row
+norms under 10 for a whole 20-epoch run. **The baseline was NOT
+re-recorded** -- doing so would erase the evidence of the defect. That
+decision is the owner's.
+
+**Two repairs are possible.** Loop `forces()` over every chunk the
+requested range touches (what the reverted attempt did), or couple the
+knobs so `batch_count` is forced to `chunks`. Neither is applied.
+
+**Nothing measured so far is affected.** Every campaign in
+`experiments/fodiwalk-densekernel/` and `experiments/fodiwalk-streaming/`
+ran `chunks = 1`, where the defect cannot fire.
+
+Provenance: `git show HEAD:fodiwalk/model.py`, the `forces` method;
+`fodiwalk/tests/golden.py` `EMBED_CASES`; `fodiwalk/tests/golden_baseline.json`;
+`experiments/fodiwalk-densekernel/REPORT.md` section 4.
