@@ -242,3 +242,8 @@ embeddings_auxdim.npz
 
 *agentic-log*/
 *agentic_log*/
+# Reference PDFs stay out of git: they are large and they are not ours.
+# `papers/2021_Blasius_...pdf` predates this rule and stays tracked --
+# .gitignore does not affect a file git already follows.
+papers/*.pdf
+papers/*.PDF
