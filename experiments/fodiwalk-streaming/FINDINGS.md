@@ -172,10 +172,25 @@ memory gap that was 4515 MB with stored `D` is now 292 MB.
 | `wordnet` | 2.06 | +0.0044 | +0.0104 | flat |
 | `ncbi_taxonomy` | 2.00 | +0.0109 | +0.0230 | flat |
 
-Clean separation with nothing in between. **Structural, not
-under-training**: ten times the epochs moved `roadnet_ca` from -0.0008 to
--0.0043 with hop MAE stuck at 117.4 -> 117.6. Two trees and a road
-network fail; 64 Euclidean dimensions cannot hold their distances.
+Clean separation with nothing in between. **Not under-training**: ten
+times the epochs moved `roadnet_ca` from -0.0008 to -0.0043 with hop MAE
+stuck at 117.4 -> 117.6.
+
+**But a flat hop R2 does not prove the graph is at fault, and section 6
+of this same file is the counter-example.** On `com_youtube`, average
+degree 5.27 and well above the split, node2vec scores hop R2 0.042 where
+`nbr_walk` scores 0.4084 on an identical protocol. So a near-flat score
+also appears at a comfortable degree when the METHOD is wrong. Degree
+predicts which graphs fodiwalk fails on; it does not establish that no
+method could succeed there.
+
+Raised by the `evaluator` session on 2026-09-02, which measured the
+degrees independently through `evaluator.load_graph` (cora 3.898, pubmed
+4.496) and proposed the test that would settle it: score two
+structurally different embeddings of ONE low-degree graph under one
+protocol. Both flat means the graph; one not flat means the method. A
+spectral embedding is the suggested second method, sharing none of the
+force-directed failure modes. NOT YET RUN.
 
 **Link prediction does not care.** `roadnet_ca` posts the campaign's best
 AUC -- 0.9994 at 5 epochs and **1.0000 at 50** -- with a NEGATIVE hop R2.
