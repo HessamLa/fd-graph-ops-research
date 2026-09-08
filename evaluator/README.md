@@ -54,7 +54,7 @@ python -m evaluator GRAPH EMBEDDING [tasks] [options]
 
 ```
   protocol=otherge seed=42
-   link_prediction     0.6s  accuracy=0.9313 precision=0.9160 recall=0.9498 f1=0.9326 auc=0.9775
+   link_prediction     0.6s  accuracy=0.9313 precision=0.9160 recall=0.9498 f1_score=0.9326 auc=0.9775
        dist_approx     5.0s  baseline.mae=1.5269 ... rf.mae=1.3231 ... mlp.mae=1.3187 ...
 ```
 
@@ -155,7 +155,7 @@ ev.link_prediction(graph, Z, *, protocol="default", seed=42, rng=None,
 | `pos_draw` | `over_cap`, `always` | `over_cap` |
 | `neg_draw` | `reject`, `far_pairs` | `reject` |
 
-Scores: `accuracy`, `precision`, `recall`, `f1`, `auc`.
+Scores: `accuracy`, `precision`, `recall`, `f1_score`, `auc`.
 
 `pos_draw` and `neg_draw` exist only to reproduce old runs. Each names a
 different way of drawing pairs out of the same generator. The two ways
@@ -337,7 +337,7 @@ A mismatched embedding scores the wrong nodes.
       "cfg":      {"max_pairs": 80000, "...": "...",
                    "protocol": "otherge", "protocol_modified": false},
       "scores":   {"accuracy": 0.9313, "precision": 0.9160, "recall": 0.9498,
-                   "f1": 0.9326, "auc": 0.9775},
+                   "f1_score": 0.9326, "auc": 0.9775},
       "sizes":    {"positives": 5278, "negatives": 5278, "edges": 5278,
                    "pairs": 10556, "train": 8444, "test": 2112},
       "seconds":  0.5477,
@@ -352,9 +352,11 @@ Every value is a plain Python type. The `cfg` of each task repeats
 `protocol` and `protocol_modified`, thus one `.jsonl` line read alone
 still says which settings produced its scores.
 
-The harmonic mean is spelled `f1`. `fodined/link_prediction.py` and
-`fodiwalk/misc/evaluation.py` spell it `f1-score`; map one to the other
-when you compare an old record to a new one.
+The harmonic mean is spelled `f1_score`, everywhere and without exception.
+`fodined/link_prediction.py` and `fodiwalk/misc/evaluation.py` spell it
+`f1-score`, and records this package wrote before 2026-09-02 carry the
+shorter `f1`. Map any of those three to `f1_score` when you compare an old
+record to a new one.
 
 ---
 
@@ -390,10 +392,10 @@ and some do not, and the split is not random.
 
 | stable | moves |
 |---|---|
-| `auc` | `accuracy`, `f1` |
+| `auc` | `accuracy`, `f1_score` |
 | `mae`, `rmse`, `r2` on the `distance` feature | the same three on the `vector` feature |
 
-Two reasons. `accuracy` and `f1` read a hard cut at probability 0.5, so a
+Two reasons. `accuracy` and `f1_score` read a hard cut at probability 0.5, so a
 tiny shift flips the pairs sitting on the line; `auc` reads the ranking and
 does not care. And the `vector` feature trains an MLP on `n_dim` columns,
 which amplifies a small input change, while the `distance` feature gives
@@ -403,7 +405,7 @@ Measured by another session on pubmed, three runs, same seed, same graph,
 identical augmentation:
 
 ```
-       accuracy    f1      r2 (vector)   mae (vector)
+       accuracy  f1_score  r2 (vector)   mae (vector)
 run A   0.9709   0.9706      0.509          0.812
 run B   0.9704   0.9701      0.487          0.828
 run C   0.9703   0.9700      0.472          0.843
@@ -432,7 +434,7 @@ size **has been observed and is not a bug**:
 
 | field | observed range |
 |---|---|
-| `accuracy`, `f1` | ± 0.001 |
+| `accuracy`, `f1_score` | ± 0.001 |
 | `mae`, `vector` feature | ± 0.035 |
 | `r2`, `vector` feature | ± 0.040 |
 
@@ -442,10 +444,10 @@ on one graph, so read them as a floor, not a guarantee: four samples cannot
 bound a tail.
 
 The ordering, though, is structural and holds on any graph. `accuracy` and
-`f1` move by whatever sits within 3.1e-06 of the 0.5 cut, which is a thin
+`f1_score` move by whatever sits within 3.1e-06 of the 0.5 cut, which is a thin
 slice. A `vector`-feature score moves by however much a 128-column MLP
 amplifies that same 3.1e-06, which has no small bound. So the `vector`
-scores are always the noisiest of the four and `accuracy`/`f1` always the
+scores are always the noisiest of the four and `accuracy`/`f1_score` always the
 quietest.
 
 ---

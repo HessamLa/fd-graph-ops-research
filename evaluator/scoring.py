@@ -5,11 +5,12 @@ The keys are FROZEN: `report.py` writes them into the record, and a
 rename breaks a recorded baseline. Every value is a plain `float`, because
 a numpy scalar does not serialize to JSON.
 
-THE RENAME. `fodined/link_prediction.py:89` and
-`fodiwalk/misc/evaluation.py:113` spell the harmonic mean `f1-score`. This
-package spells it `f1`, because a hyphen is not a Python identifier and it
-blocks the attribute and keyword forms. Map one to the other when you
-compare an old record to a new one.
+THE NAME. This package spells the harmonic mean `f1_score`, everywhere and
+without exception. `fodined/link_prediction.py:89` and
+`fodiwalk/misc/evaluation.py:113` spell it `f1-score`; a hyphen is not a
+Python identifier, so it blocks the attribute and keyword forms. Records
+written by this package before 2026-09-02 carry the shorter `f1`. Map any
+of those three to `f1_score` when you compare an old record to a new one.
 
 `zero_division=0` makes a degenerate split give 0.0, not a NaN and a
 warning. `roc_auc_score` still raises on a one-class test part; `guards.py`
@@ -32,7 +33,7 @@ def classify_scores(y, pred, prob):
     return {"accuracy": float(accuracy_score(y, pred)),
             "precision": float(precision_score(y, pred, zero_division=0)),
             "recall": float(recall_score(y, pred, zero_division=0)),
-            "f1": float(f1_score(y, pred, zero_division=0)),
+            "f1_score": float(f1_score(y, pred, zero_division=0)),
             "auc": float(roc_auc_score(y, prob))}
 
 
