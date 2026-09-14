@@ -67,13 +67,19 @@ def tiny_graph(n: int = 60, seed: int = 0):
     return A
 
 
-def cora():
-    from fodiwalk.make_graph.datasets import read_edges, to_csr
-    A, _n = to_csr(read_edges("cora"))
-    return A
+def _snap(name):
+    def load():
+        from fodiwalk.make_graph.datasets import read_edges, to_csr
+        A, _n = to_csr(read_edges(name))
+        return A
+    return load
 
 
-GRAPHS = {"tiny": tiny_graph, "cora": cora}
+# `pubmed` is the hub test. cora's worst case sits at 7.2e-07 against a
+# 1e-06 tolerance, and the margin is thin; a graph with wider rows sums
+# more terms per row and gives the float32 reordering more room.
+GRAPHS = {"tiny": tiny_graph, "cora": _snap("cora"),
+          "pubmed": _snap("pubmed")}
 
 
 def one_dz(A, case, d: int = 128, seed: int = 7):
@@ -87,7 +93,12 @@ def one_dz(A, case, d: int = 128, seed: int = 7):
     fw.augment_graph(A)
     n = A.shape[0]
     Z = jax.random.normal(jax.random.PRNGKey(11), (n, d), dtype=jnp.float32)
-    dZ = fw.steps[0](Z, fw.plans[0], fw.inv_deg_ext, fw.params)
+    # `deg_ext` since 2026-09-09; `inv_deg_ext` before it. The name
+    # differs across the two sides this script compares, the array does not.
+    div = getattr(fw, "deg_ext", None)
+    if div is None:
+        div = fw.inv_deg_ext
+    dZ = fw.steps[0](Z, fw.plans[0], div, fw.params)
     return np.asarray(jax.device_get(dZ)), fw
 
 
@@ -145,7 +156,7 @@ def main():
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--rtol", type=float, default=1e-6)
-    ap.add_argument("--graphs", default="tiny,cora")
+    ap.add_argument("--graphs", default="tiny,cora,pubmed")
     ap.add_argument("--cases", default="",
                     help="comma-separated tags; default is every case")
     a = ap.parse_args()

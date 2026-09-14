@@ -52,7 +52,7 @@ Host-side, once per distinct ``D`` (never inside the jitted kernel):
 5. **Pad** -- pad CELLS get neighbor = the row's own node id and EVERY
    coefficient plane zeroed. Pad ROWS get owner id = ``n`` (out of the
    valid ``[0, n)`` range, so ``.at[rows].add(..., mode="drop")`` silently
-   discards their contribution) and ``inv_deg_ext[n] = 0``
+   discards their contribution) and ``deg_ext[n] = 0``
    (belt-and-suspenders: even if a pad row's write were *not* dropped, it
    would land scaled by zero). See ``_step``'s docstring for the full
    padding contract and why it is deliberately doubled up.
@@ -284,10 +284,13 @@ def make_plan(D, planes, degrees=None,
         ``(nb, R, k) float32`` tile per entry of ``planes``, same order.
         ``rows`` holds the owner node id per row slot (``n`` on pad rows,
         the sentinel ``.at[...].add(mode="drop")`` relies on downstream).
-    inv_deg_ext : ``(n + 1,) float32``, ``1 / degrees`` with a trailing 0
-        slot for pad rows (index ``n``); also 0 (not 1) for any real node
-        with degree 0 -- belt-and-suspenders, since such a node never
-        appears as an owner in ``plan`` anyway (deviation 2).
+    deg_ext : ``(n + 1,) float32``, the ``degrees`` themselves with a
+        trailing slot for pad rows (index ``n``) that holds 0. A real node
+        of degree 0 also holds 0. ``step`` hands the row's value to the
+        law as ``params["node_degree"]``; what a 0 means there is the
+        LAW's decision (`fodiwalk.embed.forces.averaged` gives exactly 0,
+        which is what the old ``1 / deg`` array did). This file takes NO
+        reciprocal and performs NO division (2026-09-09).
     stats : dict with ``cells`` (real, non-padded stored entries actually
         processed -- the throughput numerator), ``n_virtual`` (virtual row
         count after hub-splitting), ``n_split`` (rows that needed
@@ -345,13 +348,13 @@ def make_plan(D, planes, degrees=None,
     starts = np.concatenate(starts_parts)
     lens = np.concatenate(lens_parts)
 
-    inv_deg_ext = np.zeros(n + 1, dtype=np.float32)
+    deg_ext = np.zeros(n + 1, dtype=np.float32)
     if owners.size == 0:
         # Degenerate D (no stored entries at all -- e.g. every node
         # isolated). Nothing to batch; the kernel's Python rung-loop over
         # an empty plan tuple is a legal zero-iteration trace.
         stats = dict(cells=0, n_virtual=0, n_split=0, rungs=0, pad_frac=0.0)
-        return tuple(), inv_deg_ext, stats
+        return tuple(), deg_ext, stats
 
     # ---- 2) width sort + ladder quantize -----------------------------------
     order = np.argsort(lens, kind="stable")
@@ -399,9 +402,11 @@ def make_plan(D, planes, degrees=None,
         padded += total_slots * k - int(Ls.sum())
         rungs.append((rows.reshape(nb, R), nbrs.reshape(nb, R, k), *tiles))
 
-    deg_safe = np.where(deg == 0, 1.0, deg)
-    inv_deg_ext[:n] = np.where(deg == 0, 0.0, 1.0 / deg_safe).astype(np.float32)
-    # inv_deg_ext[n] stays 0.0 (trailing pad slot), already zero-initialized.
+    # The DEGREES themselves, not `1 / deg`. Taking the reciprocal is
+    # force-law policy and it left this file on 2026-09-09; the law reads
+    # `params["node_degree"]` and decides what to do with a 0. A degree of
+    # 0 stays 0 here, and `deg_ext[n]` (the pad slot) stays 0 too.
+    deg_ext[:n] = deg.astype(np.float32)
 
     cells = int(lens.sum())
     stats = dict(
@@ -411,13 +416,13 @@ def make_plan(D, planes, degrees=None,
         rungs=len(rungs),
         pad_frac=padded / max(1, cells + padded),
     )
-    return tuple(rungs), inv_deg_ext, stats
+    return tuple(rungs), deg_ext, stats
 
 
 # ---------------------------------------------------------------------------
 # The jitted per-epoch kernel (built once per D, see PlanCache.derive)
 # ---------------------------------------------------------------------------
-def step(Z, plan, inv_deg_ext, params, n, force_fn):
+def step(Z, plan, deg_ext, params, n, force_fn):
     """One fused pass over the whole padded plan -> full ``(n, d)`` dZ.
 
     Rectangular-batch shape (matches ``run``'s ``one_step`` body in
@@ -434,15 +439,26 @@ def step(Z, plan, inv_deg_ext, params, n, force_fn):
         x      : ``(R, k)`` embedding distance ``||Z[v] - Z[u]||``.
         planes : tuple of ``(R, k)`` coefficient tiles, in the order the
                  plan was built with (``make_plan``'s ``planes``).
-        params : pytree of TRACED scalars (a plain dict). Traced, not
+        params : pytree of TRACED values (a plain dict). Traced, not
                  static, so a hyperparameter sweep against one ``D`` never
-                 recompiles.
+                 recompiles. This kernel ADDS one key before the call:
+
+                 ``node_degree`` : ``(R, 1)`` the degree of the row, 0 on a
+                 pad row. It broadcasts over the ``k`` axis.
 
     Everything around that call -- the ``/x`` projection onto ``Zdiff``, the
-    ``x == 0`` guard, the degree division, the drop of pad rows -- stays
-    here, because it is layout, not physics. In particular the ``x == 0``
-    guard is protecting the PADDING contract (pad cells have ``x`` exactly
-    0 by construction), so a new force law cannot accidentally break it.
+    ``x == 0`` guard, the drop of pad rows -- stays here, because it is
+    layout, not physics. In particular the ``x == 0`` guard is protecting
+    the PADDING contract (pad cells have ``x`` exactly 0 by construction),
+    so a new force law cannot accidentally break it.
+
+    THE DEGREE DIVISION IS NOT HERE, since 2026-09-09. ``dz_u = F_u /
+    deg(u)`` is the averaging coefficient of the LAW: it decides whether a
+    row converges, and the right denominator is the size of the set the law
+    sums over. This kernel cannot know that set -- ``fdhop`` attracts only
+    at ``h == 1`` and ``fdhop_all`` at every ``h`` -- so it stops deciding.
+    It supplies the degree and nothing else. See
+    ``fodiwalk/embed/forces.py`` and ``experiments/refactor-deg/``.
 
     ``n`` and ``force_fn`` are closed over via ``functools.partial``
     (static -- ``n`` fixes shapes for this ``D``, ``force_fn`` is a Python
@@ -465,8 +481,9 @@ def step(Z, plan, inv_deg_ext, params, n, force_fn):
     term would still contribute nothing on padding. Pad ROWS carry owner id
     ``n`` (one past the last valid node), so ``dZ.at[rows].add(F,
     mode="drop")`` silently discards their entire contribution, and
-    ``inv_deg_ext[n] = 0`` neutralizes them a second way even before that
-    drop.
+    ``deg_ext[n] = 0`` neutralizes them a second way even before that
+    drop, because a law reads a degree of 0 as "contribute nothing"
+    (`fodiwalk.embed.forces.averaged`).
     """
     dZ = jnp.zeros_like(Z)
     for rung in plan:                                    # unrolled over rungs
@@ -478,11 +495,14 @@ def step(Z, plan, inv_deg_ext, params, n, force_fn):
             x = jnp.sqrt(jnp.sum(Zdiff * Zdiff, axis=-1))  # (R, k)
             x_safe = jnp.where(x == 0, 1.0, x)           # avoid /0 below
 
-            F_mag = force_fn(x, planes, params)          # (R, k) -- the physics
+            # `node_degree` rides in `params` and NOT in a fourth argument:
+            # it is a quantity of the law, like `k1`, and it changes per
+            # batch. `dict(params, ...)` is built at TRACE time.
+            p = dict(params, node_degree=deg_ext[rows][:, None])   # (R, 1)
+            F_mag = force_fn(x, planes, p)               # (R, k) -- the physics
             scale = jnp.where(x == 0, 0.0, F_mag / x_safe)
 
             F = jnp.sum(Zdiff * scale[..., None], axis=1)  # (R, d) dense k-axis reduce
-            F = F * inv_deg_ext[rows][:, None]             # /deg, 0 for pad rows
             dZ = dZ.at[rows].add(F, mode="drop")           # per-ROW write; id n dropped
             return dZ, None
         dZ, _ = jax.lax.scan(body, dZ, rung)
@@ -499,7 +519,7 @@ _step = step
 # PlanCache -- per-D derivation + compile, memoized on object identity
 # ---------------------------------------------------------------------------
 class PlanCache:
-    """Single-slot, identity-keyed cache of {plan, inv_deg_ext, stats, step}.
+    """Single-slot, identity-keyed cache of {plan, deg_ext, stats, step}.
 
     Everything derivable from ``D`` alone -- the batch plan, the padded
     coefficient tiles, the degrees, the compiled step function -- does not
@@ -554,7 +574,7 @@ class PlanCache:
         self.n_derivations = 0
 
     def derive(self, key, build_inputs):
-        """Cached ``{n, plan, inv_deg_ext, stats, step}`` for ``key``.
+        """Cached ``{n, plan, deg_ext, stats, step}`` for ``key``.
 
         ``build_inputs`` is a zero-argument thunk returning
         ``(D, planes, degrees)`` -- called ONLY on a cache miss, so
@@ -574,14 +594,14 @@ class PlanCache:
         D, planes, degrees = build_inputs()
         D = to_csr(D)
         n = D.shape[0]
-        plan_np, inv_deg_ext_np, stats = make_plan(
+        plan_np, deg_ext_np, stats = make_plan(
             D, planes, degrees=degrees, b_cells=self.b_cells,
             k_max=self.k_max, ladder_base=self.ladder_base)
 
         self._derived = {
             "n": n,
             "plan": jax.tree_util.tree_map(jax.device_put, plan_np),
-            "inv_deg_ext": jax.device_put(inv_deg_ext_np),
+            "deg_ext": jax.device_put(deg_ext_np),
             "stats": stats,
             "step": jax.jit(functools.partial(
                 _step, n=n, force_fn=self.force_fn)),

@@ -36,7 +36,7 @@ def degree_table(A, alpha: float):
     average degree 5.27 carries `3.47`, thus the hub is 636 times more
     likely. A uniform draw makes them equal, thus a hub of that graph
     receives almost no repulsion, while its attraction is still divided by
-    its degree, through `inv_deg_ext`.
+    its degree, through `params["node_degree"]`.
 
     Returns `None` when `alpha == 0`, thus the caller keeps the fast path.
     The array is `n` float64, which is 9 MB at 1.13M nodes.

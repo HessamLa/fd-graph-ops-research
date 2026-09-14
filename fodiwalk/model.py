@@ -154,7 +154,7 @@ class Fodiwalk(Fodiwalk_base):
 
         ps = build_plans(D, planes, degrees, self.plan_spec, self.force_fn)
         self.plans, self.steps = ps.plans, ps.steps
-        self.inv_deg_ext, self.chunk_rows = ps.inv_deg_ext, ps.chunk_rows
+        self.deg_ext, self.chunk_rows = ps.deg_ext, ps.chunk_rows
         self.resident, self.plan_stats = ps.resident, ps.stats
         return D
 
@@ -183,7 +183,7 @@ class Fodiwalk(Fodiwalk_base):
         if not self.resident:
             plan = jax.tree_util.tree_map(jax.device_put, plan)
         full = self.steps[i](jnp.asarray(Z, dtype=jnp.float32),
-                             plan, self.inv_deg_ext, self.params)
+                             plan, self.deg_ext, self.params)
         out = drop_steady_rate(full[row_start:row_end], key,
                                self.cfg.random_drop_rate,
                                strategy=self.cfg.drop_strategy)

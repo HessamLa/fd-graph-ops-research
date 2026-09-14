@@ -165,7 +165,7 @@ def step_sqn(Z, dZ, lr, state, epoch, memory: int = 3, eps: float = 1e-10):
     and the pairs `(s, y)` approximate the Hessian of `U`.
 
     **The reservation, and it is real.** That identity holds only when the
-    force field is CONSERVATIVE. Ours is not exactly: `inv_deg_ext` is a
+    force field is CONSERVATIVE. Ours is not exactly: the law's `1/deg(u)` is a
     per-ROW normalisation. The row sum of `u` is divided by `deg(u)` and
     the row sum of `v` by `deg(v)`, thus the force from `v` on `u` and from
     `u` on `v` differ, and a non-reciprocal field has no scalar potential.

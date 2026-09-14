@@ -161,7 +161,9 @@ def test_b2_a_pad_cell_contributes_zero_for_a_law_with_a_constant(tiny):
         A, (A.data, freq), degrees=deg, k_max=8, b_cells=64)
     assert stats["pad_frac"] > 0                    # the test needs padding
     plan_contract.check_plan(plan, 2)
-    params = dict(k1=0.999, k4=0.01, kr=1.0, sign=-1.0)
+    # `node_degree` of 1: this test asks whether the LAW vanishes on a
+    # pad cell, and a divisor of 1 cannot hide a non-zero answer.
+    params = dict(k1=0.999, k4=0.01, kr=1.0, sign=-1.0, node_degree=1.0)
     for rung in plan:
         h, fq = np.asarray(rung[2]), np.asarray(rung[3])
         pad = (h == 0) & (fq == 0)
@@ -193,11 +195,50 @@ def test_b3_fused_reproduces_fdlinear_cellwise(tiny):
     fq = rng.integers(1, 9, 500).astype(np.float32)
     x = rng.random(500).astype(np.float32) * 4
     w = forces.fuse(h, fq)
-    p = dict(k1=0.999, k4=0.01, kr=1.0, sign=-1.0)
+    # one `node_degree` for both, so this compares the physics only
+    p = dict(k1=0.999, k4=0.01, kr=1.0, sign=-1.0, node_degree=1.0)
     a = np.asarray(forces.fdlinear(jnp.asarray(x), (jnp.asarray(h),
                                                     jnp.asarray(fq)), p))
     b = np.asarray(forces.fdlinear_fused(jnp.asarray(x), (jnp.asarray(w),), p))
     assert np.allclose(a, b, atol=1e-6)
+
+
+def test_b3_every_law_divides_by_its_own_node_degree():
+    """B3.5, since 2026-09-09. `1 / deg(u)` is the LAW's averaging
+    coefficient. `forcedirected.sell_c_sigma.step` supplies
+    `params["node_degree"]` and divides NOTHING; a law that forgets
+    `forces.averaged` keeps the whole row sum and the row diverges with no
+    error. This is the gate that replaced the kernel's own division.
+
+    Every law is LINEAR in `1 / node_degree`, thus a degree of 2 gives
+    exactly half of a degree of 1. Both are powers of two, so float32
+    makes the comparison BIT-exact and no tolerance is needed.
+    """
+    import jax.numpy as jnp
+    rng = np.random.default_rng(11)
+    m = 400
+    h = rng.integers(1, 5, m).astype(np.float32)
+    fq = rng.integers(1, 9, m).astype(np.float32)
+    plane = {"h": h, "freq": fq, "w": forces.fuse(h, fq),
+             "deg_le": rng.choice([-1.0, 1.0], m).astype(np.float32)}
+    x = (rng.random(m).astype(np.float32) * 4.0) + 0.1
+    base = dict(k1=0.999, k2=1.0, k4=0.01, kr=1.0, sign=-1.0)
+
+    for law, names in forces.FORCE_PLANES.items():
+        fn = forces.FORCE_FN[law]
+        pl = tuple(jnp.asarray(plane[nm]) for nm in names)
+        def run(d):
+            return np.asarray(fn(jnp.asarray(x), pl,
+                                 dict(base, node_degree=jnp.float32(d))))
+        one, two = run(1.0), run(2.0)
+        assert np.array_equal(two, one * np.float32(0.5)), (
+            f"{law} does not divide by params['node_degree']. The kernel "
+            f"stopped dividing on 2026-09-09, thus every law must end with "
+            f"`forces.averaged`, or it loses the averaging in silence.")
+        assert np.all(run(0.0) == 0.0), (
+            f"{law}: a degree of 0 must give EXACTLY 0 and never a "
+            f"division by zero. That is what the old `inv_deg_ext` did, "
+            f"and invariant I5 exists to catch the frozen row it makes.")
 
 
 def test_b3_degrees_from_D_counts_the_h1_entries(tiny):

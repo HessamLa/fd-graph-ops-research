@@ -285,23 +285,31 @@ def pad_to(a, m, fill):
 
 
 @functools.partial(jax.jit, static_argnums=(7,))
-def row_forces(Z, u_glob, u_loc, v, h, freq, inv_deg, b):
+def row_forces(Z, u_glob, u_loc, v, h, freq, node_degree, b):
     """`dZ` for `b` rows, from a flat pair list. The projection of `step`.
 
     Reproduced from `forcedirected.sell_c_sigma.step`: the law gives a
     MAGNITUDE along `u -> v`, this divides by `x` to project it onto
-    `Zdiff`, guards `x == 0`, sums over the partners of a row, and divides
-    by the degree. A pad entry carries `h = 0`, thus `fdlinear`'s `live`
-    test zeroes it, exactly as a pad cell of the plan is zeroed.
+    `Zdiff`, guards `x == 0`, and sums over the partners of a row. A pad
+    entry carries `h = 0`, thus `fdlinear`'s `live` test zeroes it, exactly
+    as a pad cell of the plan is zeroed.
+
+    IT DOES NOT DIVIDE BY THE DEGREE (2026-09-09). `fdlinear` does that
+    itself now, through `forces.averaged`, so this passes the degree in
+    `params["node_degree"]` and multiplies nothing afterwards. Dividing
+    here as well would make every force `1 / deg^2`.
+
+    The pair axis is FLAT here, `(m,)`, and not the kernel's `(R, k)`, thus
+    `node_degree[u_loc]` is the per-PAIR degree of the owning row.
     """
     Zu = Z[u_glob]
     Zdiff = Z[v] - Zu                                    # (m, d)
     x = jnp.sqrt(jnp.sum(Zdiff * Zdiff, axis=-1))        # (m,)
     x_safe = jnp.where(x == 0, 1.0, x)
-    mag = fdlinear(x, (h, freq), PARAMS)                 # the law, verbatim
+    p = dict(PARAMS, node_degree=node_degree[u_loc])     # (m,) per PAIR
+    mag = fdlinear(x, (h, freq), p)                      # the law, verbatim
     scale = jnp.where(x == 0, 0.0, mag / x_safe)
-    F = jax.ops.segment_sum(Zdiff * scale[:, None], u_loc, num_segments=b)
-    return F * inv_deg[:, None]
+    return jax.ops.segment_sum(Zdiff * scale[:, None], u_loc, num_segments=b)
 
 
 def main():
@@ -356,10 +364,11 @@ def main():
             u_loc, v, h, freq = rows_of(A, nodes, n, args.walks,
                                         args.walk_len, rng)
             ep_pairs += u_loc.size
-            # the degree divisor: the h == 1 entries of the row, as
-            # `embed.forces.degrees_from_D` counts them
+            # the degree: the h == 1 entries of the row, as
+            # `embed.forces.degrees_from_D` counts them. The DEGREE and not
+            # its reciprocal -- `fdlinear` divides for itself since
+            # 2026-09-09, and a degree of 0 gives exactly 0 there.
             deg = np.bincount(u_loc[h == 1], minlength=b).astype(np.float32)
-            inv_deg = np.where(deg == 0, 0.0, 1.0 / np.maximum(deg, 1.0))
             # pad the pair axis to a bucket boundary. A pad entry carries
             # h = 0, thus `fdlinear`'s `live` test zeroes it, and its
             # partner is its own row, thus `Zdiff` is 0 too -- the same
@@ -371,7 +380,7 @@ def main():
                            jnp.asarray(pad_to(v, m, nodes[0])),
                            jnp.asarray(pad_to(h, m, 0.0)),
                            jnp.asarray(pad_to(freq, m, 1.0)),
-                           jnp.asarray(inv_deg), b)
+                           jnp.asarray(deg), b)
             # THE IMMEDIATE UPDATE. Row u moves before row u+1 is computed.
             Z, STATE = apply_update(args.optim, Z, STATE,
                                     jnp.asarray(nodes), F, lr_t, ep, args)

@@ -62,7 +62,8 @@ class PlanSet:
 
     `plans`        one plan for each chunk, on the device when `resident`.
     `steps`        the jitted kernel of each chunk.
-    `inv_deg_ext`  `(n + 1,)` on the device. Global, thus every chunk has
+    `deg_ext`      `(n + 1,)` DEGREES on the device, with a trailing pad
+                   slot at 0. Global, thus every chunk has
                    the same array.
     `chunk_rows`   the row count of a chunk. `forces` picks the plan with it.
     `resident`     the plans stay on the device.
@@ -71,7 +72,7 @@ class PlanSet:
 
     plans: list
     steps: list
-    inv_deg_ext: object
+    deg_ext: object
     chunk_rows: int
     resident: bool
     stats: dict
@@ -88,7 +89,7 @@ def build_plans(D, planes, degrees, spec: PlanSpec, force_fn) -> PlanSet:
     chunk_rows = max(1, (n + max(1, spec.chunks) - 1) // max(1, spec.chunks))
     plans, steps, cells = [], [], 0
     stats = None
-    inv_deg_ext = None
+    deg_ext = None
     # ONE scratch buffer for the padded per-chunk `indptr`, reused for
     # every chunk instead of a fresh `np.zeros(n + 1)` each time: at
     # 1.13M nodes over 8 chunks that was eight (n + 1) allocations, ~72 MB
@@ -106,7 +107,7 @@ def build_plans(D, planes, degrees, spec: PlanSpec, force_fn) -> PlanSet:
         np.clip(scratch, 0, hi - lo, out=scratch)
         Dc = sp.csr_matrix((D.data[lo:hi], D.indices[lo:hi], scratch),
                            shape=D.shape)
-        plan, inv_deg_ext, stats = make_plan(
+        plan, deg_ext, stats = make_plan(
             Dc, tuple(p[lo:hi] for p in planes), degrees=degrees,
             b_cells=spec.b_cells, k_max=spec.k_max,
             ladder_base=spec.ladder_base)
@@ -125,7 +126,7 @@ def build_plans(D, planes, degrees, spec: PlanSpec, force_fn) -> PlanSet:
             plan_contract.check_plan(plan, len(planes))
     return PlanSet(
         plans=plans, steps=steps,
-        inv_deg_ext=jax.device_put(inv_deg_ext),
+        deg_ext=jax.device_put(deg_ext),
         chunk_rows=chunk_rows, resident=resident,
         stats=dict(stats, cells=cells, chunks=len(plans),
                    rows_per_chunk=chunk_rows))

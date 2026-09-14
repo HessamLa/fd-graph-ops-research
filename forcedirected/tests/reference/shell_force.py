@@ -78,8 +78,19 @@ def shell_force(x, planes, params):
     """`Fa + Fr` for every cell of an `(R, k)` tile. Pure, elementwise.
 
     `planes` is `(shell_coeff, h)`; `params` holds `k1, k2, k3, k4,
-    h_shift`. Returns the force MAGNITUDE along `u -> v`; the engine applies
-    the direction, the degree division and the padding guards.
+    h_shift` and, since 2026-09-09, `node_degree`. Returns the force
+    MAGNITUDE along `u -> v`; the engine applies the direction and the
+    padding guards.
+
+    THE DEGREE DIVISION IS HERE, and no longer in the engine. `step` used
+    to divide the row sum by `deg(u)` for every law; on 2026-09-09 that
+    averaging coefficient moved into the laws, because the right
+    denominator is the size of the set a law sums over. This oracle
+    reproduces it inline rather than calling
+    `fodiwalk.embed.forces.averaged`: `forcedirected` imports NOTHING of
+    this repository (`test_b1_engine_package_imports_nothing_of_this_repository`)
+    and this file is inside it. A degree of 0 gives exactly 0, which is what
+    the old `inv_deg_ext` array did.
 
     A pad cell arrives with both planes zeroed, so each term vanishes on its
     own. Keep that property: the engine's `x == 0` guard is the second layer
@@ -89,4 +100,5 @@ def shell_force(x, planes, params):
     Fa = (params["k1"] * shell_coeff * x
           * jnp.exp(-params["k2"] * (h - params["h_shift"])))
     Fr = -params["k3"] * h * jnp.exp(-params["k4"] * x)
-    return Fa + Fr
+    d = params["node_degree"]
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)

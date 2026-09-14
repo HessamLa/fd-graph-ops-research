@@ -63,7 +63,7 @@ METHODS = ["make_graph", "graph_walk", "set_D", "augment_graph", "forces",
 # promised a stage that was never real. See `check` below.
 
 ATTRIBUTES = ["cfg", "law", "rng", "D", "stats", "freq", "info",
-              "plan_stats", "plans", "steps", "inv_deg_ext", "chunk_rows",
+              "plan_stats", "plans", "steps", "deg_ext", "chunk_rows",
               "resident", "params", "diverged", "dZ", "Z"]
 
 # The KEY SETS after a default run. A key that goes away breaks a log or a

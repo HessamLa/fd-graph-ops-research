@@ -101,7 +101,7 @@ def test_plan_stats_and_layout_are_identical(name, old, cora):
     assert set(ps.stats) == set(fw.plan_stats)
     for k, v in fw.plan_stats.items():
         assert ps.stats[k] == v, k
-    assert np.array_equal(_host(ps.inv_deg_ext), _host(fw.inv_deg_ext))
+    assert np.array_equal(_host(ps.deg_ext), _host(fw.deg_ext))
 
 
 @pytest.mark.parametrize("name", CASES)
