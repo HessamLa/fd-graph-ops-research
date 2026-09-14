@@ -77,6 +77,34 @@ def test_p1_fdlinear_on_cora_200_epochs(cora):
     Without the guard, such a change surfaces as an `acc`/`f1` mismatch and
     reads as a defect of the physics, which is the wrong diagnosis this
     scenario must not invite.
+
+    RE-PINNED 2026-09-14, when `1/deg(u)` moved from the kernel into the
+    force laws. The divisor now multiplies per CELL, inside the row sum,
+    instead of per ROW after it. Float32 multiplication does not distribute
+    over a sum, thus the trajectory re-rounds. This is NOT a relaxation:
+    every tolerance below is unchanged. Only the reference point moved.
+
+    THE OLD VALUES, measured before the move, for the record:
+        p1  dz 0.5016  acc 0.9754  f1_score 0.9752  auc 0.9962
+            r2_dist 0.253   mae_dist 1.291
+        p2  dz 0.1274  auc 0.9986  acc 0.9858  r2_dist 0.523
+
+    The cause was MEASURED and not assumed. An isolation control -- the
+    pre-refactor kernel with the SAME reciprocal array moved from after the
+    row sum to inside it, nothing else changed -- reproduces the same
+    per-step difference (5.9406e-07) and breaks the same pins, on four of
+    five metrics FURTHER from the old values than the refactor does. The
+    two arithmetics diverge at lambda = 0.033 per epoch and saturate near
+    7.5 percent of ||Z|| by epoch 500, while `acc` moves by ONE test pair
+    in 1056. Evidence: `experiments/refactor-deg/PROGRESS.md`.
+
+    READ THIS BEFORE RE-PINNING AGAIN. A 2000-epoch pin at abs=5e-5 holds
+    only while the arithmetic is bit-for-bit identical, thus p2 is a
+    TRAJECTORY test wearing the clothes of a quality test. If it breaks
+    again, first ask whether the arithmetic legitimately changed; if it
+    did, the better repair is to pin p2 on quality (`acc`, `auc`,
+    `r2_dist` at ~1e-3) and drop the `dz` pin, not to keep chasing the
+    trajectory.
     """
     A, n = cora
     for fuse_planes in (False, True):
@@ -91,20 +119,25 @@ def test_p1_fdlinear_on_cora_200_epochs(cora):
         assert out["acc"] == pytest.approx(0.9754, abs=5e-5)
         assert out["f1_score"] == pytest.approx(0.9752, abs=5e-5)
         assert out["auc"] == pytest.approx(0.9962, abs=5e-5)
-        assert out["r2_dist"] == pytest.approx(0.253, abs=5e-4)
+        assert out["r2_dist"] == pytest.approx(0.2525, abs=5e-4)
         assert out["mae_dist"] == pytest.approx(1.291, abs=5e-4)
 
 
 def test_p2_the_learning_rate_ladder_at_0999(cora):
-    """P2. EXACT. `auc = 0.9986  r2_dist = 0.523`, and `dz = 0.1274`."""
+    """P2. EXACT. `auc = 0.99832  r2_dist = 0.5221`, and `dz = 0.13070`.
+
+    RE-PINNED 2026-09-14 with p1 above; the reason and the old values are
+    in `test_p1_fdlinear_on_cora_200_epochs`. At 2000 epochs this is the
+    most rounding-sensitive test in the file.
+    """
     A, n = cora
     out = run(A, n, dim=64, epochs=2000, lr=0.999, seed=42, optim="plain",
               pairs="nbr_walk", **GRID, **FDL)
     assert out["dnnz"] == 209_542
-    assert out["dz"] == pytest.approx(0.1274, abs=5e-5)
-    assert out["auc"] == pytest.approx(0.9986, abs=5e-5)
-    assert out["acc"] == pytest.approx(0.9858, abs=5e-5)
-    assert out["r2_dist"] == pytest.approx(0.523, abs=5e-4)
+    assert out["dz"] == pytest.approx(0.13070, abs=5e-5)
+    assert out["auc"] == pytest.approx(0.99832, abs=5e-5)
+    assert out["acc"] == pytest.approx(0.98485, abs=5e-5)
+    assert out["r2_dist"] == pytest.approx(0.5221, abs=5e-4)
 
 
 def test_p3_buckets_with_far_pairs_three_seeds(cora):
