@@ -295,7 +295,7 @@ def row_forces(Z, u_glob, u_loc, v, h, freq, node_degree, b):
     as a pad cell of the plan is zeroed.
 
     IT DOES NOT DIVIDE BY THE DEGREE (2026-09-09). `fdlinear` does that
-    itself now, through `forces.averaged`, so this passes the degree in
+    itself now, from `params["node_degree"]`, so this passes the degree in
     `params["node_degree"]` and multiplies nothing afterwards. Dividing
     here as well would make every force `1 / deg^2`.
 

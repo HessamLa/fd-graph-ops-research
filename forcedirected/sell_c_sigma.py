@@ -288,7 +288,7 @@ def make_plan(D, planes, degrees=None,
         trailing slot for pad rows (index ``n``) that holds 0. A real node
         of degree 0 also holds 0. ``step`` hands the row's value to the
         law as ``params["node_degree"]``; what a 0 means there is the
-        LAW's decision (`fodiwalk.embed.forces.averaged` gives exactly 0,
+        LAW's decision (every law of `fodiwalk` gives exactly 0,
         which is what the old ``1 / deg`` array did). This file takes NO
         reciprocal and performs NO division (2026-09-09).
     stats : dict with ``cells`` (real, non-padded stored entries actually
@@ -483,7 +483,7 @@ def step(Z, plan, deg_ext, params, n, force_fn):
     mode="drop")`` silently discards their entire contribution, and
     ``deg_ext[n] = 0`` neutralizes them a second way even before that
     drop, because a law reads a degree of 0 as "contribute nothing"
-    (`fodiwalk.embed.forces.averaged`).
+    (every force law of `fodiwalk.embed.forces`).
     """
     dZ = jnp.zeros_like(Z)
     for rung in plan:                                    # unrolled over rungs

@@ -207,7 +207,7 @@ def test_b3_every_law_divides_by_its_own_node_degree():
     """B3.5, since 2026-09-09. `1 / deg(u)` is the LAW's averaging
     coefficient. `forcedirected.sell_c_sigma.step` supplies
     `params["node_degree"]` and divides NOTHING; a law that forgets
-    `forces.averaged` keeps the whole row sum and the row diverges with no
+    the inline divide keeps the whole row sum and the row diverges with no
     error. This is the gate that replaced the kernel's own division.
 
     Every law is LINEAR in `1 / node_degree`, thus a degree of 2 gives
@@ -234,7 +234,7 @@ def test_b3_every_law_divides_by_its_own_node_degree():
         assert np.array_equal(two, one * np.float32(0.5)), (
             f"{law} does not divide by params['node_degree']. The kernel "
             f"stopped dividing on 2026-09-09, thus every law must end with "
-            f"`forces.averaged`, or it loses the averaging in silence.")
+            f"an inline divide by params['node_degree'], or it loses it in silence.")
         assert np.all(run(0.0) == 0.0), (
             f"{law}: a degree of 0 must give EXACTLY 0 and never a "
             f"division by zero. That is what the old `inv_deg_ext` did, "

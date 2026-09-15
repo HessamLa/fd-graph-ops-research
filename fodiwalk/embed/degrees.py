@@ -3,7 +3,7 @@
 `forcedirected.make_plan` pads this array into `deg_ext` and the kernel
 hands each row's value to the law as `params["node_degree"]`. Since
 2026-09-09 the kernel takes NO reciprocal and does NO division: every law
-ends with `forces.averaged`, which divides. A degree of 0 gives exactly 0
+ends with an inline divide by `params["node_degree"]`. A degree of 0 gives 0
 there and it zeroes the WHOLE force of the row -- the repulsion too. The
 row then never moves, for the whole run, and nothing raises (trap 4 of
 `dev-docs/REFACTOR.md`, invariant I5). `plan_contract.check_degrees`
@@ -46,7 +46,7 @@ def resolve_degrees(D, G, spec, explicit=None) -> np.ndarray:
     An explicit array (`deg_source = "A"`, or `set_D(degrees=...)`) is the
     true degree of the graph. `edge_rule = "low_deg"` needs it: a hub can
     then hold no entry at `h = 1`, `degrees_from_D` would give 0, and
-    `forces.averaged` turns that into 0.0, which freezes the row.
+    Each law turns that into 0.0, which freezes the row.
 
     Otherwise the count of `h = 1` entries of `D`, which is the package
     default.

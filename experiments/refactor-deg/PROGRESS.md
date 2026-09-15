@@ -97,7 +97,8 @@ scaffold below exists only to move one law at a time and is removed at M9.
 
 DESIGN, as the owner set it: `force_fn(x, planes, params)` keeps its three
 arguments. The degree rides in `params["node_degree"]`, like `k1`. Every law
-ends with `averaged(F, params)`. `forcedirected/sell_c_sigma.py` takes no
+ends with an INLINE divide by `params["node_degree"]` -- no shared helper,
+since a law is read as one piece. `forcedirected/sell_c_sigma.py` takes no
 reciprocal and performs no division.
 
 ## Per-step result, all seven laws

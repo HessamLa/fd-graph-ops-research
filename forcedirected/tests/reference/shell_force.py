@@ -87,7 +87,7 @@ def shell_force(x, planes, params):
     averaging coefficient moved into the laws, because the right
     denominator is the size of the set a law sums over. This oracle
     reproduces it inline rather than calling
-    `fodiwalk.embed.forces.averaged`: `forcedirected` imports NOTHING of
+    a `fodiwalk` helper: `forcedirected` imports NOTHING of
     this repository (`test_b1_engine_package_imports_nothing_of_this_repository`)
     and this file is inside it. A degree of 0 gives exactly 0, which is what
     the old `inv_deg_ext` array did.

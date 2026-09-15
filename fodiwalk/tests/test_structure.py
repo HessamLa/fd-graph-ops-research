@@ -260,7 +260,7 @@ SIZE_EXCEPTIONS = {
     # this file does one. Splitting the fdhop family into a second module
     # would break the module docstring's claim that the physics is here and
     # nowhere else, which is the property that catches plane-order defects.
-    # 2026-09-09: +5, for `averaged` and its note. The averaging
+    # 2026-09-09: +5, for the inline divisor and its note. The averaging
     # coefficient `1/deg(u)` moved in from `forcedirected/sell_c_sigma.py`,
     # which now divides nothing. That is force-law policy arriving where it
     # belongs, not this file taking a second job.

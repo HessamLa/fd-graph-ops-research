@@ -95,28 +95,28 @@ def degrees_from_D(D: sp.csr_matrix, degrees=None) -> np.ndarray:
 # cora. That is why `fdhop_all` went non-finite at `k1=0.999, k2=1.0`.
 #
 # The kernel now supplies `params["node_degree"]` and divides nothing.
-# EVERY law must end with `averaged`, or it keeps the whole row sum and the
-# row diverges in silence. `test_b3_every_law_divides_by_its_own_node_degree`
-# is the gate. Division is linear, thus a per-CELL divide here equals a
-# per-ROW divide after the sum, up to float32 rounding order; the measured
-# difference per law is in `experiments/refactor-deg/PROGRESS.md`.
+# EVERY law must end with these two lines, written out:
+#
+#     d = params["node_degree"]
+#     return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+#
+# `node_degree` is the `(R, 1)` degree of the row and it broadcasts over the
+# `k` axis. It is 0 on a pad row and on a row the augmentation left with no
+# `h == 1` entry, and a 0 gives EXACTLY 0 -- never a division by zero. That
+# reproduces the `inv_deg_ext` array this replaced, where 0 became 0.0 and
+# froze the row for the whole run: the silence invariant I5
+# (`plan_contract.check_degrees`) exists to catch before it happens.
+#
+# The two lines are INLINE IN EVERY LAW and not a shared helper. A law is
+# read as one piece, thus its divisor is written where it applies and a
+# reader never leaves the function to learn what the last line does. A law
+# that omits them keeps the whole row sum and the row diverges in silence;
+# `test_b3_every_law_divides_by_its_own_node_degree` is the gate.
+#
+# Division is linear, thus a per-CELL divide here equals a per-ROW divide
+# after the sum, up to float32 rounding order; the measured difference per
+# law is in `experiments/refactor-deg/PROGRESS.md`.
 # ---------------------------------------------------------------------------
-
-
-def averaged(F, params):
-    """`F / deg(u)`. The averaging coefficient every law ends with.
-
-    `params["node_degree"]` is the `(R, 1)` degree of the row, which
-    broadcasts over the `k` axis. It is 0 on a pad row and on a row the
-    augmentation left with no `h == 1` entry.
-
-    A degree of 0 gives EXACTLY 0 and never a division by zero. That
-    reproduces the `inv_deg_ext` array this replaced, where 0 became 0.0
-    and froze the row for the whole run -- the silence that invariant I5
-    (`plan_contract.check_degrees`) exists to catch before it happens.
-    """
-    d = params["node_degree"]
-    return jnp.where(d > 0, F / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,8 @@ def fdlinear(x, planes, params):
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
     Fr = jnp.where(live, -coeff * ex, 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdlinear_fused(x, planes, params):
@@ -178,7 +179,8 @@ def fdlinear_fused(x, planes, params):
     Fa = jnp.where(near, params["k1"] * x, 0.0)
     coeff = jnp.where(near, params["kr"], w)
     Fr = jnp.where(live, -coeff * ex, 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdhop(x, planes, params):
@@ -217,7 +219,8 @@ def fdhop(x, planes, params):
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     decay = jnp.where(near, 1.0, jnp.exp(-params["k4"] * x))
     Fr = jnp.where(live, -params["kr"] * h * decay, 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdhop2(x, planes, params):
@@ -240,7 +243,8 @@ def fdhop2(x, planes, params):
 
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdhop_min(x, planes, params):
@@ -279,7 +283,8 @@ def fdhop_min(x, planes, params):
                    jnp.where(live & ~near,
                              -params["kr"] * h * jnp.exp(-params["k4"] * x),
                              0.0))
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdhop_all(x, planes, params):
@@ -315,7 +320,8 @@ def fdhop_all(x, planes, params):
 
     Fa = jnp.where(live, params["k1"] * x * jnp.exp(-params["k2"] * h), 0.0)
     Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fdhop_all_freq(x, planes, params):
@@ -348,7 +354,8 @@ def fdhop_all_freq(x, planes, params):
                    * jnp.exp(-params["k2"] * h), 0.0)
     Fr = jnp.where(live, -freq * params["kr"] * h
                    * jnp.exp(-params["k4"] * x), 0.0)
-    return averaged(Fa + Fr, params)   # the law's own 1/deg(u)
+    d = params["node_degree"]          # the law's own 1/deg(u)
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 
 def fuse(h, freq):

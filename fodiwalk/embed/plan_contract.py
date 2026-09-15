@@ -17,7 +17,7 @@ this seam was SILENT: the run gave a number, and not an error.
                 CLASS -- one plane read as another -- is what the value
                 tests below still guard against.
     2026-08-18  a policy that emptied the `h = 1` rows froze them, because
-                `degrees_from_D` gave 0 and `forces.averaged` turns that to
+                `degrees_from_D` gave 0 and every law turns that to
                 0.0.
     2026-08-16  a continuous weight gave every pair its own shell, thus
                 `degrees_from_D` gave 0 for every row and the WHOLE force
@@ -173,7 +173,7 @@ def check(law: str, planes, D) -> None:
 def check_degrees(degrees, D) -> None:
     """Assert I5: no row may reach the force law with a degree of 0.
 
-    `forces.averaged` turns a degree of 0 into 0.0, and that zeroes EVERY force
+    Every law turns a degree of 0 into 0.0, and that zeroes EVERY force
     of the row -- the repulsion too. The row then never moves, in silence.
     A row with no `h = 1` entry must therefore get an explicit degree, from
     the true degree of `A` or from `degrees = 1`.
@@ -187,7 +187,7 @@ def check_degrees(degrees, D) -> None:
     if frozen.any():
         i = int(np.flatnonzero(frozen)[0])
         _fail(f"{int(frozen.sum())} rows hold stored pairs and a degree of "
-              f"0 (row {i} holds {int(width[i])} pairs). `forces.averaged` "
+              f"0 (row {i} holds {int(width[i])} pairs). Every force law "
               f"turns that into 0.0 and the rows freeze for the whole run, "
               f"with no error (I5). Pass an explicit `degrees` array -- "
               f"the true degree of A, or 1.")
