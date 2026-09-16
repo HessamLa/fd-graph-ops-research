@@ -413,7 +413,7 @@ the planes.
 
 ```python
 plan_set.plans, plan_set.steps          # one plan and one jitted step each
-plan_set.inv_deg_ext, plan_set.chunk_rows
+plan_set.deg_ext, plan_set.chunk_rows     # DEGREES, not 1/deg
 plan_set.resident, plan_set.stats       # -> fw.plan_stats
 ```
 
@@ -426,6 +426,11 @@ which planes, in what order.
 | --- | --- | --- |
 | `fdlinear` | `(h, freq)` | `h <= 1` only |
 | `fdlinear_fused` | `(w,)` | `w < 0` |
+| `fdhop` | `(h,)` | `h <= 1` only |
+| `fdhop2` | `(h,)` | `h <= 1` only |
+| `fdhop_min` | `(h, deg_le)` | `h <= 1`, and `deg(u) <= deg(v)` |
+| `fdhop_all` | `(h,)` | EVERY `h` |
+| `fdhop_all_freq` | `(h, freq)` | EVERY `h` |
 
 Add a law. When it reuses the plane names that exist, NOTHING else needs an
 edit -- that is what the registry is for:
@@ -437,9 +442,15 @@ from fodiwalk.embed import forces
 def fdsquare(x, planes, params):
     h, freq = planes
     live, near = h > 0, h <= 1
-    Fa = jnp.where(near & live, params["k1"] * x * x, 0.0)
+    Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
-    return Fa + jnp.where(live, -coeff * jnp.exp(-params["k4"] * x), 0.0)
+    Fr = jnp.where(live, -coeff * jnp.exp(-params["k4"] * x * x), 0.0)
+    # REQUIRED, and it is the LAW's job since 2026-09-09. Leave these two
+    # lines out and the row keeps its whole sum instead of the average.
+    # Measured on cora, 30 epochs: with them the run is finite; without
+    # them it reaches NaN.
+    d = params["node_degree"]
+    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
 
 forces.FORCE_PLANES["fdsquare"] = ("h", "freq")
 forces.FORCE_FN["fdsquare"] = fdsquare
@@ -447,8 +458,34 @@ forces.FORCE_FN["fdsquare"] = fdsquare
 fw = Fodiwalk(n_dim=64, force="fdsquare", pairs="nbr_walk")
 ```
 
-A law returns the force MAGNITUDE along `u -> v`. The kernel applies the
-direction, the degree division and the padding guards.
+`fdsquare` is `fdlinear` with a GAUSSIAN repulsion decay, `exp(-k4 * x^2)`.
+The attraction stays LINEAR in `x` on purpose: a force linear in `x` makes
+each row a spring of constant `k1 * sum(weight) / deg(u)`, and the stability
+edge is 1.0. A quadratic ATTRACTION, `k1 * x * x`, has no bounded constant
+and the run reaches NaN whatever the divisor does -- this example carried
+that defect until 2026-09-16. The block above is run verbatim on cora at 30
+epochs and is finite.
+
+A law returns the force MAGNITUDE along `u -> v`, ALREADY DIVIDED BY THE
+DEGREE. The kernel applies the direction and the padding guards, and it
+divides nothing.
+
+**`1/deg(u)` is the law's, not the engine's** (2026-09-09). `dz_u =
+F_u / deg(u)` is an averaging coefficient: it decides whether a row
+converges, and the right denominator is the size of the set the LAW sums
+over. `forcedirected/sell_c_sigma.py` applied one divisor to every law
+until then, which was right for `fdhop`, attracting only at `h == 1`, and
+wrong for `fdhop_all`, attracting at every `h` and so summing ~7x more
+terms on cora -- the mismatch that sent it non-finite at `k1 = 0.999,
+k2 = 1.0`.
+
+The kernel supplies `params["node_degree"]`, the `(R, 1)` degree of the
+row, which broadcasts over the `k` axis. It is 0 on a pad row and on a row
+the augmentation left with no `h == 1` entry, and a 0 must give EXACTLY 0
+rather than a division by zero. Every law ends with the two lines above,
+written out and not behind a helper, so a law reads as one piece.
+`test_b3_every_law_divides_by_its_own_node_degree` is the gate: a degree of
+2 must give exactly half of a degree of 1.
 
 A law that needs a NEW plane needs two more edits, and the error message
 names both: an entry in `embed.planes.PLANE_BUILDERS` that builds the
@@ -480,8 +517,8 @@ params = force_params(fspec)          # dict(k1=, k4=, kr=, sign=)
 `set_D(degrees=...)`) is the true degree of the graph. Otherwise
 `degrees_from_D` counts the `h == 1` entries of a row.
 
-A row with no `h = 1` entry gets degree 0, `inv_deg_ext` becomes 0.0, and
-the kernel zeroes the WHOLE force of that row -- the repulsion too. The row
+A row with no `h = 1` entry gets degree 0, every law turns that into 0.0,
+and that zeroes the WHOLE force of the row -- the repulsion too. The row
 never moves again and nothing raises. `edge_rule="low_deg"` can do that to
 a hub, thus `deg_source="auto"` reads `edge_rule` and takes the degree from
 `A` instead.
@@ -544,7 +581,7 @@ The `np.rint` is not decoration: see invariant 1.
 
 The rule MUST give exactly 1 to the nearest pairs, which is what the
 `- 1.0` does. A rule that never emits 1 leaves every row at degree 0, thus
-`inv_deg_ext` is 0.0 and NOTHING moves. `mean_gap` and `pmi` have this
+every law gives 0.0 and NOTHING moves. `mean_gap` and `pmi` have this
 defect today -- `mean_gap` leaves 2,574 of Cora's 2,708 rows with no
 `h = 1` entry -- and it is why they score AUC 0.55 and 0.70 with
 `||dZ||` near 0. `plan_contract.check_degrees` stops such a run before the
