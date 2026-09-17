@@ -89,8 +89,8 @@ def shell_force(x, planes, params):
     reproduces it inline rather than calling
     a `fodiwalk` helper: `forcedirected` imports NOTHING of
     this repository (`test_b1_engine_package_imports_nothing_of_this_repository`)
-    and this file is inside it. A degree of 0 gives exactly 0, which is what
-    the old `inv_deg_ext` array did.
+    and this file is inside it. The `jnp.where` guards division by zero only:
+    a degree of 0 divides by 1. No row that invariant I5 admits carries 0.
 
     A pad cell arrives with both planes zeroed, so each term vanishes on its
     own. Keep that property: the engine's `x == 0` guard is the second layer
@@ -100,5 +100,5 @@ def shell_force(x, planes, params):
     Fa = (params["k1"] * shell_coeff * x
           * jnp.exp(-params["k2"] * (h - params["h_shift"])))
     Fr = -params["k3"] * h * jnp.exp(-params["k4"] * x)
-    d = params["node_degree"]
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg

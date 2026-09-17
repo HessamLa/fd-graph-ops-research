@@ -97,15 +97,26 @@ def degrees_from_D(D: sp.csr_matrix, degrees=None) -> np.ndarray:
 # The kernel now supplies `params["node_degree"]` and divides nothing.
 # EVERY law must end with these two lines, written out:
 #
-#     d = params["node_degree"]
-#     return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+#     deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+#     return (Fa + Fr) / deg
 #
 # `node_degree` is the `(R, 1)` degree of the row and it broadcasts over the
-# `k` axis. It is 0 on a pad row and on a row the augmentation left with no
-# `h == 1` entry, and a 0 gives EXACTLY 0 -- never a division by zero. That
-# reproduces the `inv_deg_ext` array this replaced, where 0 became 0.0 and
-# froze the row for the whole run: the silence invariant I5
-# (`plan_contract.check_degrees`) exists to catch before it happens.
+# `k` axis. The `jnp.where` is a GUARD AGAINST DIVISION BY ZERO and nothing
+# more: a degree of 0 divides by 1, thus such a row keeps its whole sum
+# instead of an average.
+#
+# WHICH ROWS CARRY 0, and why neither is reached. A PAD row carries 0, and
+# the kernel drops it by owner id (`dZ.at[rows].add(F, mode="drop")`); its
+# cells also hold `x == 0`, which the kernel zeroes separately. A REAL row
+# with no `h == 1` entry would carry 0, and `plan_contract.check_degrees`
+# (invariant I5) refuses the run before the first epoch. Turn that check
+# off and such a row moves under an unaveraged force.
+#
+# CHANGED 2026-09-16, on the owner's instruction. The form before it was
+# `jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)`, which gave
+# EXACTLY 0 on a degree of 0 and so froze the row -- what the `inv_deg_ext`
+# array did before the divisor moved here. For every run I5 admits the two
+# forms agree bit for bit.
 #
 # The two lines are INLINE IN EVERY LAW and not a shared helper. A law is
 # read as one piece, thus its divisor is written where it applies and a
@@ -165,8 +176,8 @@ def fdlinear(x, planes, params):
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     coeff = jnp.where(near, params["kr"], h / jnp.maximum(freq, 1.0))
     Fr = jnp.where(live, -coeff * ex, 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdlinear_fused(x, planes, params):
@@ -179,8 +190,8 @@ def fdlinear_fused(x, planes, params):
     Fa = jnp.where(near, params["k1"] * x, 0.0)
     coeff = jnp.where(near, params["kr"], w)
     Fr = jnp.where(live, -coeff * ex, 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdhop(x, planes, params):
@@ -219,8 +230,8 @@ def fdhop(x, planes, params):
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     decay = jnp.where(near, 1.0, jnp.exp(-params["k4"] * x))
     Fr = jnp.where(live, -params["kr"] * h * decay, 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdhop2(x, planes, params):
@@ -243,8 +254,8 @@ def fdhop2(x, planes, params):
 
     Fa = jnp.where(near & live, params["k1"] * x, 0.0)
     Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdhop_min(x, planes, params):
@@ -283,8 +294,8 @@ def fdhop_min(x, planes, params):
                    jnp.where(live & ~near,
                              -params["kr"] * h * jnp.exp(-params["k4"] * x),
                              0.0))
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdhop_all(x, planes, params):
@@ -320,8 +331,8 @@ def fdhop_all(x, planes, params):
 
     Fa = jnp.where(live, params["k1"] * x * jnp.exp(-params["k2"] * h), 0.0)
     Fr = jnp.where(live, -params["kr"] * h * jnp.exp(-params["k4"] * x), 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fdhop_all_freq(x, planes, params):
@@ -354,8 +365,8 @@ def fdhop_all_freq(x, planes, params):
                    * jnp.exp(-params["k2"] * h), 0.0)
     Fr = jnp.where(live, -freq * params["kr"] * h
                    * jnp.exp(-params["k4"] * x), 0.0)
-    d = params["node_degree"]          # the law's own 1/deg(u)
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg             # the law's own averaging
 
 
 def fuse(h, freq):

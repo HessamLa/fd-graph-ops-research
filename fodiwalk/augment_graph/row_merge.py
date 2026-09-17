@@ -155,7 +155,7 @@ def with_neighbours_low_deg(stats: RowStats, A, n: int, block: int = 20_000):
     A WARNING, and it is the reason `deg_source` exists in the caller: a
     hub can now hold NO entry at `h = 1`. `degrees_from_D` counts the
     entries at `h = 1`, thus it would return 0 for that row, and
-    Every force law turns a 0 into 0.0, which zeroes EVERY force of the row,
+    Every force law divides a 0 by 1, thus the row is never averaged,
     the repulsion too. The node would never move. The caller must therefore
     give `make_plan` the true degree of `A`, and not the count of `D`.
 

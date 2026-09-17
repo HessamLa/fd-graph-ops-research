@@ -235,10 +235,17 @@ def test_b3_every_law_divides_by_its_own_node_degree():
             f"{law} does not divide by params['node_degree']. The kernel "
             f"stopped dividing on 2026-09-09, thus every law must end with "
             f"an inline divide by params['node_degree'], or it loses it in silence.")
-        assert np.all(run(0.0) == 0.0), (
-            f"{law}: a degree of 0 must give EXACTLY 0 and never a "
-            f"division by zero. That is what the old `inv_deg_ext` did, "
-            f"and invariant I5 exists to catch the frozen row it makes.")
+        # A degree of 0 divides by 1 and never raises. CHANGED 2026-09-16
+        # with the divisor's form: it used to give exactly 0, thus a
+        # degree-0 row froze. Now such a row keeps its whole sum. No row
+        # that invariant I5 admits carries 0 -- `check_degrees` refuses a
+        # row that holds pairs and has degree 0 before the first epoch, and
+        # a pad row is dropped by owner id -- so this is a guard against
+        # division by zero and not a policy for degree 0.
+        assert np.array_equal(run(0.0), run(1.0)), (
+            f"{law}: a degree of 0 must divide by 1, thus it must agree "
+            f"with a degree of 1, and it must never raise.")
+        assert np.isfinite(run(0.0)).all(), f"{law}: degree 0 is not finite"
 
 
 def test_b3_degrees_from_D_counts_the_h1_entries(tiny):

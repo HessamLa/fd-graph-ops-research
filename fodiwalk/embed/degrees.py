@@ -3,9 +3,9 @@
 `forcedirected.make_plan` pads this array into `deg_ext` and the kernel
 hands each row's value to the law as `params["node_degree"]`. Since
 2026-09-09 the kernel takes NO reciprocal and does NO division: every law
-ends with an inline divide by `params["node_degree"]`. A degree of 0 gives 0
-there and it zeroes the WHOLE force of the row -- the repulsion too. The
-row then never moves, for the whole run, and nothing raises (trap 4 of
+ends with an inline divide by `params["node_degree"]`, guarded so a 0
+divides by 1. Such a row is therefore NOT averaged: it keeps its whole row
+sum and it moves too far, and nothing raises (trap 4 of
 `dev-docs/REFACTOR.md`, invariant I5). `plan_contract.check_degrees`
 asserts against exactly that, and this module is what must not produce it.
 

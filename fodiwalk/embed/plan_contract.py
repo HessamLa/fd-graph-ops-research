@@ -173,7 +173,7 @@ def check(law: str, planes, D) -> None:
 def check_degrees(degrees, D) -> None:
     """Assert I5: no row may reach the force law with a degree of 0.
 
-    Every law turns a degree of 0 into 0.0, and that zeroes EVERY force
+    Every law divides a degree of 0 by 1, thus the row keeps its WHOLE force
     of the row -- the repulsion too. The row then never moves, in silence.
     A row with no `h = 1` entry must therefore get an explicit degree, from
     the true degree of `A` or from `degrees = 1`.

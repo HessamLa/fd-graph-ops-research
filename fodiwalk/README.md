@@ -448,9 +448,9 @@ def fdsquare(x, planes, params):
     # REQUIRED, and it is the LAW's job since 2026-09-09. Leave these two
     # lines out and the row keeps its whole sum instead of the average.
     # Measured on cora, 30 epochs: with them the run is finite; without
-    # them it reaches NaN.
-    d = params["node_degree"]
-    return jnp.where(d > 0, (Fa + Fr) / jnp.where(d > 0, d, 1.0), 0.0)
+    # them it reaches NaN. The `jnp.where` guards division by zero.
+    deg = jnp.where(params["node_degree"] > 0, params["node_degree"], 1)
+    return (Fa + Fr) / deg
 
 forces.FORCE_PLANES["fdsquare"] = ("h", "freq")
 forces.FORCE_FN["fdsquare"] = fdsquare
@@ -517,8 +517,8 @@ params = force_params(fspec)          # dict(k1=, k4=, kr=, sign=)
 `set_D(degrees=...)`) is the true degree of the graph. Otherwise
 `degrees_from_D` counts the `h == 1` entries of a row.
 
-A row with no `h = 1` entry gets degree 0, every law turns that into 0.0,
-and that zeroes the WHOLE force of the row -- the repulsion too. The row
+A row with no `h = 1` entry gets degree 0, every law then divides by 1,
+and the row keeps its WHOLE force instead of an average -- the repulsion too. The row
 never moves again and nothing raises. `edge_rule="low_deg"` can do that to
 a hub, thus `deg_source="auto"` reads `edge_rule` and takes the degree from
 `A` instead.
