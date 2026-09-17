@@ -4,7 +4,7 @@ Live state of the `evaluator/` package. Keep this current. Update it when
 you verify something, fix something, find a defect, or get a report from
 another session. Date every entry.
 
-Last updated: 2026-09-02 (`date -u`: 2026-09-02T02:58Z).
+Last updated: 2026-09-16.
 
 **Identify a session by its ROLE. Not its name, and not its UUID.**
 
@@ -317,6 +317,39 @@ same ordering, both flat on wordnet (rho 0.011-0.019).
 **Why it matters:** a tuned node2vec at its best `q` still loses to `fdhop` —
 0.5301 against 0.7119 on cora, 0.2361 against 0.6194 on pubmed. That answers
 the fair objection that the earlier comparison left node2vec at its defaults.
+
+## Measurement variance on cora (cell A, 2026-09-16)
+
+One fixed Z (cora, n_dim 64, lr 0.999, nbr_walk/fdlinear, 200 ep), scored
+under eval seeds 42,56,88,101,7 with protocol `fodiwalk_dist`. Record:
+`agentic-log/21.evaluator-cellA/`.
+
+| metric | eval-only SD | p1 seed SD (Runner) |
+|---|---|---|
+| acc | 5.05e-03 | 2.92e-03 |
+| auc | 1.34e-03 | 1.12e-03 |
+| r2_dist | 2.90e-02 | 2.66e-02 |
+| mae_dist | 5.38e-02 | 5.19e-02 |
+
+**The evaluator alone produces the whole seed spread on these metrics.**
+Any pin tighter than this is a trajectory pin, not a quality pin.
+
+Why, measured:
+- `max_pairs=50000` never binds on cora. 5,278 edges -> 10,556 LP pairs,
+  test split 2,112. Binomial SD of acc at 0.975 on 2,112 is 3.4e-03.
+- r2_dist pairs (~18,400) come from only 200 BFS sources; the source draw
+  (`dist_approx.py:101`) dominates.
+
+Split (same Z): sample arm (rng varies) vs classifier arm (seed varies).
+acc 2.56e-03 vs 3.85e-03; auc 7.16e-04 vs 8.10e-04; r2_dist 3.56e-02 vs
+1.81e-02. LP spread comes from both; hop spread mostly from the 200-source
+sample. `seed` is not pure classifier: it also picks the test split. Lever
+for hop variance is `n_sources`; for LP on cora, averaging eval seeds (all
+edges are already used).
+
+For method comparison fix BOTH `seed` and `rng` to an eval constant, or
+average over several eval seeds. `rng` drives the sample; `seed` drives the
+split, the forest and the MLP.
 
 ## Known-bad script patterns (each cost a run)
 
