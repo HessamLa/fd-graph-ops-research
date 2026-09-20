@@ -1,7 +1,7 @@
 # ICLR 2027 runs: preliminary results
 
-**Built:** 2026-09-19T18:27Z. **Status:** preliminary. Runner has made 2365 of
-the 2,277 planned runs; 2052 are scored. cora and pubmed are complete
+**Built:** 2026-09-20T07:46Z. **Status:** preliminary. Runner has made 2371 of
+the 2,277 planned runs; 2336 are scored. cora and pubmed are complete
 at all four dimensions for the main cells; wordnet dim 128 has started; the
 large graphs have not.
 
@@ -35,11 +35,11 @@ run holds `Z.npy`, `config.json` and `evaluation.json`. Cell table:
 |---|---|---|---|---|---|---|
 | fdhop walk_edges min_gap 10x20 k4=1 kr=1 | 11 | 0.843 ± 0.006 | 0.710 ± 0.016 | 0.960 ± 0.003 | 0.9989 ± 0.0003 | 0.9880 ± 0.0015 |
 | fdlinear walk_edges min_gap 10x20 k4=0.01 kr=1 | 11 | 0.779 ± 0.005 | 0.685 ± 0.008 | 0.721 ± 0.006 | 0.9942 ± 0.0010 | 0.9678 ± 0.0020 |
-| node2vec q=0.5 | 11 | 0.736 ± 0.003 | 0.510 ± 0.012 | 0.852 ± 0.002 | 0.9963 ± 0.0005 | 0.9675 ± 0.0028 |
-| deepwalk | 34 | 0.684 ± 0.071 | 0.497 ± 0.104 | 0.913 ± 0.021 | 0.9986 ± 0.0005 | 0.9794 ± 0.0032 |
-| node2vec q=2.0 | 11 | 0.633 ± 0.006 | 0.371 ± 0.018 | 0.866 ± 0.003 | 0.9973 ± 0.0006 | 0.9724 ± 0.0018 |
+| deepwalk 80x40 win10 | 11 | 0.742 ± 0.003 | 0.594 ± 0.009 | 0.909 ± 0.003 | 0.9985 ± 0.0004 | 0.9781 ± 0.0021 |
+| node2vec q=0.5 10x80 win10 | 11 | 0.736 ± 0.003 | 0.510 ± 0.012 | 0.852 ± 0.002 | 0.9963 ± 0.0005 | 0.9675 ± 0.0028 |
+| node2vec q=1.0 10x80 win10 | 11 | 0.699 ± 0.007 | 0.454 ± 0.017 | 0.861 ± 0.004 | 0.9963 ± 0.0008 | 0.9714 ± 0.0024 |
+| node2vec q=2.0 10x80 win10 | 11 | 0.633 ± 0.006 | 0.371 ± 0.018 | 0.866 ± 0.003 | 0.9973 ± 0.0006 | 0.9724 ± 0.0018 |
 | fdhop nbr_walk min_gap 10x20 k4=1 kr=1 | 11 | 0.630 ± 0.008 | 0.392 ± 0.020 | 0.972 ± 0.002 | 0.9995 ± 0.0001 | 0.9895 ± 0.0010 |
-| node2vec q=1.0 | 34 | 0.497 ± 0.178 | 0.282 ± 0.135 | 0.843 ± 0.041 | 0.9973 ± 0.0009 | 0.9765 ± 0.0055 |
 
 **pubmed, dim 128**
 
@@ -47,11 +47,11 @@ run holds `Z.npy`, `config.json` and `evaluation.json`. Cell table:
 |---|---|---|---|---|---|---|
 | fdhop walk_edges min_gap 10x20 k4=1 kr=1 | 11 | 0.779 ± 0.003 | 0.613 ± 0.010 | 0.779 ± 0.005 | 0.9990 ± 0.0002 | 0.9910 ± 0.0006 |
 | fdlinear walk_edges min_gap 10x20 k4=0.01 kr=1 | 11 | 0.713 ± 0.002 | 0.510 ± 0.006 | 0.473 ± 0.007 | 0.9949 ± 0.0003 | 0.9715 ± 0.0009 |
-| deepwalk | 11 | 0.664 ± 0.002 | 0.517 ± 0.005 | 0.729 ± 0.004 | 0.9979 ± 0.0002 | 0.9735 ± 0.0015 |
+| deepwalk 80x40 win10 | 11 | 0.664 ± 0.002 | 0.517 ± 0.005 | 0.729 ± 0.004 | 0.9979 ± 0.0002 | 0.9735 ± 0.0015 |
 | fdhop nbr_walk min_gap 10x20 k4=1 kr=1 | 11 | 0.565 ± 0.005 | 0.342 ± 0.016 | 0.863 ± 0.004 | 0.9995 ± 0.0001 | 0.9920 ± 0.0008 |
-| node2vec q=0.5 | 11 | 0.415 ± 0.004 | 0.220 ± 0.009 | 0.635 ± 0.004 | 0.9959 ± 0.0003 | 0.9681 ± 0.0017 |
-| node2vec q=1.0 | 11 | 0.363 ± 0.004 | 0.182 ± 0.011 | 0.627 ± 0.002 | 0.9960 ± 0.0002 | 0.9679 ± 0.0018 |
-| node2vec q=2.0 | 11 | 0.276 ± 0.004 | 0.135 ± 0.011 | 0.607 ± 0.005 | 0.9962 ± 0.0002 | 0.9701 ± 0.0015 |
+| node2vec q=0.5 10x80 win10 | 11 | 0.415 ± 0.004 | 0.220 ± 0.009 | 0.635 ± 0.004 | 0.9959 ± 0.0003 | 0.9681 ± 0.0017 |
+| node2vec q=1.0 10x80 win10 | 11 | 0.363 ± 0.004 | 0.182 ± 0.011 | 0.627 ± 0.002 | 0.9960 ± 0.0002 | 0.9679 ± 0.0018 |
+| node2vec q=2.0 10x80 win10 | 11 | 0.276 ± 0.004 | 0.135 ± 0.011 | 0.607 ± 0.005 | 0.9962 ± 0.0002 | 0.9701 ± 0.0015 |
 
 **wordnet, dim 128**
 
@@ -59,11 +59,11 @@ run holds `Z.npy`, `config.json` and `evaluation.json`. Cell table:
 |---|---|---|---|---|---|---|
 | fdlinear walk_edges min_gap 10x20 k4=0.01 kr=1 | 11 | 0.365 ± 0.007 | 0.166 ± 0.006 | 0.812 ± 0.006 | 0.9992 ± 0.0001 | 0.9927 ± 0.0004 |
 | fdhop walk_edges min_gap 10x20 k4=1 kr=1 | 11 | 0.348 ± 0.010 | 0.113 ± 0.013 | 0.992 ± 0.002 | 0.9998 ± 0.0001 | 0.9963 ± 0.0005 |
-| deepwalk | 11 | 0.163 ± 0.007 | 0.028 ± 0.006 | 0.683 ± 0.004 | 0.9992 ± 0.0001 | 0.9891 ± 0.0006 |
+| deepwalk 80x40 win10 | 11 | 0.163 ± 0.007 | 0.028 ± 0.006 | 0.683 ± 0.004 | 0.9992 ± 0.0001 | 0.9891 ± 0.0006 |
 | fdhop nbr_walk min_gap 10x20 k4=1 kr=1 | 11 | 0.062 ± 0.006 | 0.011 ± 0.007 | 0.905 ± 0.006 | 0.9943 ± 0.0005 | 0.9560 ± 0.0022 |
-| node2vec q=0.5 | 11 | 0.023 ± 0.005 | 0.043 ± 0.007 | 0.471 ± 0.002 | 0.9994 ± 0.0001 | 0.9934 ± 0.0006 |
-| node2vec q=1.0 | 11 | 0.015 ± 0.005 | 0.032 ± 0.010 | 0.482 ± 0.006 | 0.9994 ± 0.0000 | 0.9939 ± 0.0007 |
-| node2vec q=2.0 | 11 | 0.005 ± 0.005 | 0.031 ± 0.008 | 0.496 ± 0.004 | 0.9994 ± 0.0001 | 0.9943 ± 0.0005 |
+| node2vec q=0.5 10x80 win10 | 11 | 0.023 ± 0.005 | 0.043 ± 0.007 | 0.471 ± 0.002 | 0.9994 ± 0.0001 | 0.9934 ± 0.0006 |
+| node2vec q=1.0 10x80 win10 | 11 | 0.015 ± 0.005 | 0.032 ± 0.010 | 0.482 ± 0.006 | 0.9994 ± 0.0000 | 0.9939 ± 0.0007 |
+| node2vec q=2.0 10x80 win10 | 11 | 0.005 ± 0.005 | 0.031 ± 0.008 | 0.496 ± 0.004 | 0.9994 ± 0.0001 | 0.9943 ± 0.0005 |
 
 fdhop with the walk_edges policy leads on cora and pubmed, on both geometry
 measures. The gap over deepwalk is 0.101 on cora and 0.115 on pubmed, about
@@ -83,13 +83,59 @@ section.
 AUC of all, and the worst rho of the fodiwalk cells. It puts neighbours
 close and loses the longer distances.
 
+## 1.1 The baselines at a matched walk budget
+
+Runner ran deepwalk and node2vec q=1 over the same seven budgets at window
+5. At q=1 both use the SAME first-order walk generator, so a row here
+differs only in the output layer: deepwalk uses hierarchical softmax,
+node2vec uses negative sampling with 5 negatives.
+
+**cora, dim 128, window 5: the same walk budget for both**
+
+| walks x length | steps per node | deepwalk | node2vec q=1 | difference |
+|---|---|---|---|---|
+| 10x10 | 100 | 0.395 ± 0.006 | 0.168 ± 0.008 | +0.227 |
+| 5x20 | 100 | 0.418 ± 0.009 | 0.155 ± 0.007 | +0.263 |
+| 10x20 | 200 | 0.561 ± 0.006 | 0.225 ± 0.003 | +0.335 |
+| 10x40 | 400 | 0.681 ± 0.004 | 0.369 ± 0.008 | +0.313 |
+| 20x20 | 400 | 0.671 ± 0.005 | 0.351 ± 0.007 | +0.321 |
+| 10x80 | 800 | 0.708 ± 0.007 | 0.491 ± 0.009 | +0.217 |
+| 40x20 | 800 | 0.707 ± 0.004 | 0.496 ± 0.004 | +0.211 |
+
+**pubmed, dim 128, window 5: the same walk budget for both**
+
+| walks x length | steps per node | deepwalk | node2vec q=1 | difference |
+|---|---|---|---|---|
+| 10x10 | 100 | 0.086 ± 0.003 | -0.121 ± 0.003 | +0.207 |
+| 5x20 | 100 | 0.104 ± 0.003 | -0.137 ± 0.003 | +0.241 |
+| 10x20 | 200 | 0.346 ± 0.004 | -0.102 ± 0.002 | +0.448 |
+| 10x40 | 400 | 0.548 ± 0.003 | -0.081 ± 0.004 | +0.629 |
+| 20x20 | 400 | 0.547 ± 0.003 | -0.068 ± 0.002 | +0.615 |
+| 10x80 | 800 | 0.640 ± 0.002 | -0.020 ± 0.002 | +0.660 |
+| 40x20 | 800 | 0.637 ± 0.002 | 0.016 ± 0.002 | +0.620 |
+
+
+**The budget is not the reason node2vec scores lower.** deepwalk wins every
+row, by 0.21 to 0.34 rho on cora and by 0.21 to 0.66 on pubmed, and the gap
+does not close as the budget grows. On pubmed node2vec stays at or below
+zero rho until 40x20. The cause is the output layer, not the walk count.
+An earlier note of mine said the budget was the likely cause; this table
+replaces it.
+
+Both also gain from a wider window: node2vec q=1 at 10x80 reaches 0.699
+with window 10 against 0.491 with window 5 on cora. The window is the
+larger lever for node2vec than the walk count.
+
+The headline table above keeps each baseline at its own published budget,
+deepwalk 80x40 window 10 and node2vec 10x80 window 10.
+
 ## 2. Dimension (Spearman rho)
 
 **cora**
 
 | dim | deepwalk | node2vec q=0.5 | fdhop walk_edges | fdhop nbr_walk |
 |---|---|---|---|---|
-| 128 | 0.684 ± 0.071 (34) | 0.736 ± 0.003 | 0.843 ± 0.006 | 0.630 ± 0.008 |
+| 128 | 0.742 ± 0.003 | 0.736 ± 0.003 | 0.843 ± 0.006 | 0.630 ± 0.008 |
 | 64 | 0.779 ± 0.002 | 0.770 ± 0.005 | 0.831 ± 0.007 | 0.578 ± 0.008 |
 | 32 | 0.793 ± 0.003 | 0.789 ± 0.002 | 0.809 ± 0.007 | 0.521 ± 0.010 |
 | 16 | 0.785 ± 0.003 | 0.783 ± 0.004 | 0.767 ± 0.011 | 0.454 ± 0.016 |
@@ -108,9 +154,9 @@ close and loses the longer distances.
 | dim | deepwalk | node2vec q=0.5 | fdhop walk_edges | fdhop nbr_walk |
 |---|---|---|---|---|
 | 128 | 0.163 ± 0.007 | 0.023 ± 0.005 | 0.348 ± 0.010 | 0.062 ± 0.006 |
-| 64 | 0.295 ± 0.006 (9) | 0.034 ± 0.005 (9) | 0.318 ± 0.008 (9) | 0.038 ± 0.004 (9) |
-| 32 | 0.400 ± 0.008 (9) | 0.054 ± 0.005 (9) | 0.283 ± 0.007 (9) | 0.021 ± 0.005 (9) |
-| 16 | 0.459 ± 0.011 (8) | 0.063 ± 0.008 (9) | 0.240 ± 0.008 (9) | 0.016 ± 0.003 (9) |
+| 64 | 0.295 ± 0.007 | 0.036 ± 0.006 | 0.320 ± 0.009 | 0.038 ± 0.004 |
+| 32 | 0.401 ± 0.008 | 0.055 ± 0.006 | 0.284 ± 0.007 | 0.022 ± 0.005 |
+| 16 | 0.462 ± 0.011 | 0.063 ± 0.007 | 0.239 ± 0.008 | 0.015 ± 0.004 |
 
 A seed count in brackets marks a cell that is still running.
 
