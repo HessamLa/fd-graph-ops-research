@@ -4,7 +4,7 @@ Live state of the `evaluator/` package. Keep this current. Update it when
 you verify something, fix something, find a defect, or get a report from
 another session. Date every entry.
 
-Last updated: 2026-09-16.
+Last updated: 2026-09-17.
 
 **Identify a session by its ROLE. Not its name, and not its UUID.**
 
@@ -317,6 +317,74 @@ same ordering, both flat on wordnet (rho 0.011-0.019).
 **Why it matters:** a tuned node2vec at its best `q` still loses to `fdhop` —
 0.5301 against 0.7119 on cora, 0.2361 against 0.6194 on pubmed. That answers
 the fair objection that the earlier comparison left node2vec at its defaults.
+
+## Reporting rule: seeds per metric (user, 2026-09-17)
+
+Report every performance metric as **mean and std**: **11 seeds** for small
+or medium graphs, **3 seeds** for very large graphs. A single-seed number is
+not a reportable result.
+
+Every scorecard in `evaluator/reports/` up to 2026-09-07 is single-seed and
+does not meet this rule.
+
+Size boundary (user, 2026-09-17): "very large" starts at com_youtube
+(1.13M nodes); "large" counts as very large. So 3 seeds for com_youtube,
+as_skitter, roadnet_ca, ncbi_taxonomy; 11 for cora, pubmed, wordnet.
+Still open: whether "seed" means embedding seed, eval seed, or both.
+
+## ICLR 2027 store (user, 2026-09-17)
+
+Runner writes embeddings to `experiments/for-iclr2027/embeddings/` (symlink
+to `data_cache/for-iclr2027/`), driver `run_comparisons.sh`, log
+`runs.log`. On notice: score each new run and write `evaluation.json` in
+that run's own directory, next to `Z.npy` and `config.json`.
+
+Scorer: `data_cache/evaluator/for-iclr2027/eval_runs.py` (log
+`eval_runs.log`). Skips folders already scored. Fixed eval seed 42 for all
+runs; protocol n2v1m, lp_max_pairs 50000. Scope (Runner, relaying owner,
+2026-09-17): fodiwalk fdhop, node2vec, deepwalk, plus the kept fdlinear
+runs. 40 of 46 cora d128 runs scored 08:37Z, 0 failures. Check on seed-42
+run ba42b00f: LP and DA identical to config.json metrics. Score at nice 10,
+2 threads, because Runner embeds at the same time.
+
+Update 08:5xZ: `evaluation.json` schema 2 = final Z at top level plus
+`checkpoints.epoch_050/100/150`. Watcher `watch.sh` (pid 3042387 at
+restart) scores pending runs every 5 min; stop with
+`touch data_cache/evaluator/for-iclr2027/STOP`. It pauses while a
+large-graph embedding runs (Runner times section 5.6), and the scorer
+stops mid-pass for the same reason. Plan is now the owner's paper plan
+section 5: 2,277 runs, ~7 days; new runs have no `metrics` block. Diverged
+runs have no folder: key in `experiments/for-iclr2027/diverged.keys` —
+tables for Table 4 and the 5.5 lr map must show them as "diverged".
+Variant identity: walker.name/weight/walks/walk_len/q, force.law,
+force.params (k2,k4,kr), optimizer.rule/lr_decay/lr, n_dim.
+Large-graph block starts in ~3 days (from 2026-09-17): Runner messages
+first; then `touch STOP` and score large graphs between runs by hand. An
+overlap of a few minutes with a timed run is accepted, but it MUST be
+recorded in the table notes. `eval_runs.log` OK lines carry start-end UTC
+times for this; compare them with the runs.log times.
+Cut graphs (5.6 memory vs n): com_youtube at max_nodes 10k/100k/300k,
+same folder path as the full graph, hash omits max_nodes. Subgraph = BFS
+ball from a seed-drawn start, so load with seed=run.seed (scorer does).
+Scorer raises "graph mismatch" unless n and nnz//2 equal dataset.n and
+dataset.edges. momentum/nesterov lr is 0.099 (map grid 0.999, 0.5, 0.2,
+0.099, 0.05, 0.02). Checkpoints now only in the 5.5 optimizer study.
+## nbr_walk ignores the weight rule (found 2026-09-17, confirmed twice)
+
+`policy_nbr_walk.py:119` sets `h = stats.mn` and NEVER calls
+`weights.RULES`; only `policy_walk.py:144` does. So every nbr_walk run is
+min_gap whatever `config.json` records. Proof: on cora d128 the `Z.npy`
+sha256 is identical across flat/min_gap/mean_gap/pmi at seeds 42, 7, 56,
+88, while walk_edges differs between flat (f06d1bd1c4774f53) and min_gap
+(041b656844bc6c56) at seed 42. Runner reproduced both halves. Schedule now
+has ONE nbr_walk cell. Stored nbr_walk flat/mean_gap/pmi runs are
+duplicates: keep them out of any weight-rule table. Fix belongs to the
+fodiwalk owner; a fix changes every nbr_walk Z and needs a rerun.
+
+5.3 weight rules are min_gap and flat only. mean_gap and pmi failed on
+every cora run (16 FAIL lines from 09:41Z, PlaneContractError I5: real
+edges get h > 1, rows get degree 0). No folders. In tables these are a
+CONTRACT FAILURE, not "diverged" — keep the two apart.
 
 ## Measurement variance on cora (cell A, 2026-09-16)
 
