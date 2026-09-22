@@ -52,6 +52,16 @@ def _edges_cora():
     return np.loadtxt(f"{DATA}/cora/cora.cites", dtype=np.int64)
 
 
+def _edges_citeseer():
+    """`<from> <to>`, paper ids. Some ids are words, not numbers.
+
+    `cora.cites` holds only integer ids; `citeseer.cites` mixes numeric and
+    alphanumeric ones (e.g. `bradshaw97introduction`), so this reads text
+    and lets `to_csr`'s `np.unique` renumber it, same as `cora`.
+    """
+    return np.loadtxt(f"{DATA}/citeseer/citeseer.cites", dtype="<U32")
+
+
 def _edges_pubmed():
     """`<edge_id>\\tpaper:<src>\\t|\\tpaper:<dst>`, after two header lines."""
     src, dst = [], []
@@ -117,6 +127,8 @@ def _edges_ncbi():
 def read_edges(name: str):
     if name == "cora":
         return _edges_cora()
+    if name == "citeseer":
+        return _edges_citeseer()
     if name == "pubmed":
         return _edges_pubmed()
     if name == "wordnet":

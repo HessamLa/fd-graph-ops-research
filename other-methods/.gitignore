@@ -1,0 +1,9 @@
+# isolated venv for karateclub / nodevectors (rebuild from README)
+karateclub/.venv-karate/
+
+# cloned + built Force2Vec C++ source (clone from HipGraph/Force2Vec, `make`)
+force2vec/src/
+
+# regenerable adjacency dumps and run logs / handoffs
+results/adj/
+results/*.log

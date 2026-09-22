@@ -44,6 +44,9 @@ ap.add_argument("--weight", default="min_gap")
 ap.add_argument("--force", default="fdlinear")
 ap.add_argument("--optim", default="plain")
 ap.add_argument("--lr", type=float, default=0.999)
+ap.add_argument("--lr-decay", default="const", choices=("const", "linear"),
+                help="Fodiwalk's own schedule wrapper (fodiwalk/model.py:53). "
+                     "'linear' decays lr to 0 over the run")
 ap.add_argument("--k1", type=float, default=0.999, help="attraction gain")
 ap.add_argument("--k2", type=float, default=1.0,
                 help="hop decay of the attraction. `fdhop_all` only")
@@ -52,6 +55,10 @@ ap.add_argument("--k4", type=float, default=0.01,
                      "Config default 0.01 is 100x flatter")
 ap.add_argument("--kr", type=float, default=1.0, help="repulsion at h = 1")
 ap.add_argument("--sign", type=float, default=-1.0, help="fdlinear only")
+ap.add_argument("--deg-source", default="auto", choices=("auto", "D", "A"),
+                help="I5 guard: a graph with a true degree-0 node that "
+                     "still gets a far pair needs 'A', the true degree of "
+                     "the graph, or that row freezes silently")
 ap.add_argument("--device", default="cpu")
 ap.add_argument("--chunks", type=int, default=1)
 # both
@@ -180,7 +187,8 @@ def embed_fodiwalk(A, n):
                   optim=args.optim, walks=args.walks, walk_len=args.walk_len,
                   window=args.window, k1=args.k1, k4=args.k4, kr=args.kr,
                   fdlinear_sign=args.sign, p=args.p, q=args.q,
-                  k2=args.k2)
+                  k2=args.k2, deg_source=args.deg_source,
+                  lr_decay=args.lr_decay)
     fw.embed(A, epochs=args.epochs, batch_count=args.chunks)
     Z = np.asarray(fw.get_embeddings(), dtype=np.float32)
     diverged = bool(getattr(fw, "diverged", False))
@@ -347,7 +355,7 @@ def main():
                    "params": fparams} if args.method == "fodiwalk"
                   else {"law": "", "module": "", "params": {}}),
         "optimizer": ({"rule": args.optim, "module": "forcedirected/optim.py",
-                       "lr": args.lr, "lr_decay": "const",
+                       "lr": args.lr, "lr_decay": args.lr_decay,
                        "dc_gain": dc_gain,
                        "effective_lr": round(args.lr * dc_gain, 6),
                        "params": {}} if args.method == "fodiwalk"
