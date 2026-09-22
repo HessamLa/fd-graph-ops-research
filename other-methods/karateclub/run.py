@@ -72,6 +72,13 @@ def embed_karateclub(method, A, n, dim, seed):
     elif method == "randne":
         from karateclub import RandNE
         model = RandNE(dimensions=dim, seed=seed)
+    elif method == "lapeig":
+        # karateclub's Laplacian Eigenmaps. Chosen over sklearn's
+        # SpectralEmbedding because arpack there hangs on these graphs'
+        # many disconnected components (citeseer has 48 isolated nodes);
+        # this one solves citeseer in 2 s and pubmed in 30 s.
+        from karateclub import LaplacianEigenmaps
+        model = LaplacianEigenmaps(dimensions=dim, seed=seed)
     elif method == "line":
         # LINE's own paper concatenates first- and second-order halves.
         from karateclub import FirstOrderLINE, SecondOrderLINE
@@ -98,7 +105,7 @@ def embed_nodevectors(method, A, n, dim, seed):
     return np.asarray(model.fit_transform(G))
 
 
-KARATE = {"netmf", "grarep", "hope", "randne", "line"}
+KARATE = {"netmf", "grarep", "hope", "randne", "line", "lapeig"}
 NODEVEC = {"prone"}
 
 
@@ -131,7 +138,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--emit", action="store_true")
     ap.add_argument("--method", required=True,
-                    choices=("prone", "netmf", "grarep", "hope", "randne", "line"))
+                    choices=("prone", "netmf", "grarep", "hope", "randne", "line", "lapeig"))
     ap.add_argument("--graph", required=True)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dim", type=int, default=128)

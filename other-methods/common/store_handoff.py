@@ -19,10 +19,15 @@ sys.path.insert(0, os.path.join("/home/h/gm/fd-graph-ops-research", "other-metho
 from common.store import save_scored
 
 
+# report labels for the short emit names
+LABEL = {"lapeig": "laplacian_eigenmaps"}
+
+
 def main(handoff):
     meta = json.load(open(os.path.join(handoff, "meta.json")))
     Z = np.load(os.path.join(handoff, "Z.npy"))
-    save_scored(Z, graph=meta["graph"], method=meta["method"],
+    method = LABEL.get(meta["method"], meta["method"])
+    save_scored(Z, graph=meta["graph"], method=method,
                 seed=meta["seed"], seconds=meta.get("seconds", 0.0),
                 peak_rss_mb=meta.get("peak_rss_mb", 0.0),
                 params={"package": "karateclub"},

@@ -100,12 +100,27 @@ def community(name, Z, seed):
             adjusted_rand_score(lab, km.labels_))
 
 
+def label_of(cfg):
+    """A readable method label. fodiwalk runs all share method.name
+    `fodiwalk_precomp`, so name them by their force law, walk policy and
+    optimiser; node2vec carries p,q in its name, collapse it to `node2vec`."""
+    name = cfg["method"]["name"]
+    if name == "fodiwalk_precomp":
+        w = cfg.get("walker", {}).get("name", "")
+        f = cfg.get("force", {}).get("law", "")
+        o = cfg.get("optimizer", {}).get("rule", "")
+        return f"fodiwalk {f} {w} {o}".strip()
+    if name.startswith("node2vec"):
+        return "node2vec"
+    return name
+
+
 def score_dir(d):
     cfg = json.load(open(f"{d}/config.json"))
     Z = np.load(f"{d}/Z.npy")
     g = cfg["dataset"]["name"]
     seed = cfg["run"]["seed"]
-    method = cfg["method"]["name"]
+    method = label_of(cfg)
     m = cfg.get("metrics", {})
     nmi, ari = community(g, Z, seed)
     return {"graph": g, "method": method, "seed": seed,

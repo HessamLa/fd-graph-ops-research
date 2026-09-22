@@ -29,11 +29,11 @@ fi
 
 record() { grep -oE '] stored .*' | sed 's/] stored /\//; s#^#'"$ROOT"'#' >> "$RUNLIST"; }
 
-# --- Stage A: shared-venv methods, 3 graphs x 3 seeds --------------------
+# --- Stage A: shared-venv method (landmark MDS), 3 graphs x 3 seeds -------
+# Laplacian Eigenmaps moved to Stage B (karateclub) -- sklearn's arpack
+# hangs on these disconnected graphs; karateclub solves them in seconds.
 for G in cora citeseer pubmed; do
   for S in 42 43 44; do
-    echo "=== $(date -u +%H:%M:%SZ) laplacian_eigenmaps $G seed=$S ==="
-    timeout 1800 "$PY" other-methods/laplacian_eigenmaps/run.py --graph "$G" --seed "$S" --dim 128 2>&1 | grep -vi CUDA | record
     echo "=== $(date -u +%H:%M:%SZ) landmark_mds $G seed=$S ==="
     timeout 1800 "$PY" other-methods/landmark_mds/run.py --graph "$G" --seed "$S" --dim 128 2>&1 | grep -vi CUDA | record
   done
@@ -54,7 +54,9 @@ kc() {  # method graph seed
   rm -rf "$H"
 }
 for G in cora citeseer pubmed; do            # sparse / scalable: all graphs
-  for S in 42 43 44; do kc prone "$G" "$S"; kc randne "$G" "$S"; kc line "$G" "$S"; done
+  for S in 42 43 44; do
+    kc lapeig "$G" "$S"; kc prone "$G" "$S"; kc randne "$G" "$S"; kc line "$G" "$S"
+  done
 done
 for G in cora citeseer; do                   # dense n x n: small graphs only
   for S in 42 43 44; do kc netmf "$G" "$S"; kc grarep "$G" "$S"; kc hope "$G" "$S"; done
