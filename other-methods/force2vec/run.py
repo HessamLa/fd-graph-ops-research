@@ -16,12 +16,19 @@ here as for every other method, and the shared scorer needs no special
 case. Feeding the repo's bundled `cora.mtx` instead would embed a DIFFERENT
 node numbering and every score would be wrong with nothing to warn.
 
-The binary exposes no seed flag, so a run is single-seed. Each config runs
-once, labelled seed 42; the report states there are no error bars for this
-family and why.
+The binary exposes no seed flag AND it is deterministic (two runs give a
+byte-identical `.embd`). So rerunning cannot give error bars. To get real
+run-to-run variance, the `--seed` here PERMUTES the node order: relabel
+nodes by the seed, embed, map back. The embedding differs because the
+binary's initialisation and sampling order follow the node numbering, while
+the graph is the same. This measures the method's stability, the same thing
+an embedding seed measures for the other methods.
+
+`--seed 42` is the identity permutation, so it reproduces the original
+single-run record; 43 and 44 are random permutations.
 
 Run:  .venv/bin/python other-methods/force2vec/run.py \
-          --graph cora --option 5 --dim 128 --iter 1200
+          --graph cora --option 5 --dim 128 --iter 1200 --seed 43
 """
 import argparse
 import os
@@ -87,14 +94,28 @@ def main():
     ap.add_argument("--nsamples", type=int, default=5)
     ap.add_argument("--lr", type=float, default=0.02)
     ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--seed", type=int, default=42,
+                    help="node-permutation seed (binary is deterministic); "
+                         "42 is identity")
     args = ap.parse_args()
     if not os.path.exists(BINARY):
         sys.exit(f"binary missing: {BINARY} -- run `make` in src/ first")
 
     A, n = load_graph(args.graph, seed=42)
+    # a node permutation is the only source of run-to-run variance for this
+    # deterministic binary. seed 42 = identity, so it reproduces the
+    # original record.
+    if args.seed == 42:
+        perm = np.arange(n)
+    else:
+        perm = np.random.default_rng(args.seed).permutation(n)
+    inv = np.empty(n, dtype=np.int64)
+    inv[perm] = np.arange(n)
+    Aperm = A[perm][:, perm]
+
     with tempfile.TemporaryDirectory(prefix="f2v_", dir="/tmp") as tmp:
         mtx = os.path.join(tmp, f"{args.graph}.mtx")
-        write_mtx(A, n, mtx)
+        write_mtx(Aperm, n, mtx)
         t0 = time.perf_counter()
         cmd = [BINARY, "-input", mtx, "-output", tmp + "/",
                "-iter", str(args.iter), "-dim", str(args.dim),
@@ -108,15 +129,17 @@ def main():
         embd = [f for f in os.listdir(tmp) if f.endswith(".embd")]
         if not embd:
             sys.exit(f"no .embd produced:\n{r.stdout[-800:]}")
-        Z = read_embd(os.path.join(tmp, embd[0]), n, args.dim)
+        Zperm = read_embd(os.path.join(tmp, embd[0]), n, args.dim)
+    Z = Zperm[inv]                             # back to original node order
 
     method = OPTION_NAME[args.option]
-    save_scored(Z, graph=args.graph, method=method, seed=42, A=A, n=n,
+    save_scored(Z, graph=args.graph, method=method, seed=args.seed, A=A, n=n,
                 seconds=secs, peak_rss_mb=rss_mb(),
                 params={"package": "HipGraph/Force2Vec", "option": args.option,
                         "iter": args.iter, "batch": args.batch,
                         "nsamples": args.nsamples, "lr": args.lr},
-                notes=f"official binary option {args.option}; no seed flag, single run")
+                notes=(f"official binary option {args.option}; deterministic, "
+                       f"no seed flag -- seed {args.seed} is a node permutation"))
 
 
 if __name__ == "__main__":
