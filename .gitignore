@@ -250,3 +250,4 @@ embeddings_auxdim.npz
 papers/*.pdf
 papers/*.PDF
 agentic-log/
+Results.txt

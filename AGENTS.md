@@ -27,6 +27,7 @@ summary:
 - CORRECTION ON THE RECORD: for `fodined` link prediction, accuracy 0.9777 and hop R2 0.630 are the DEFECT. 0.9744 and 0.616 are correct. Do not quote 0.9777 as a baseline.
 - OPEN, none started: four fixes (H2 guard warnings missing from the printed table; B1 `protocol_modified` dead for a new task; H3 `PROTOCOLS` is a mutable dict; H5 the metric guard only checks one direction). A `--dry-run` to print resolved settings. A committed test suite, including the untested `far_pairs` path. H1, degree leakage, needs a design decision.
 - The package is not installed. Run it from the repository root or set `PYTHONPATH`.
+- 2026-09-22, branch `other-comparisons` (NOT merged): added `other-methods/`, nine published comparison methods (Laplacian Eigenmaps, landmark MDS, ProNE, RandNE, LINE, NetMF, GraRep, HOPE, Force2Vec/tForce2Vec/rForce2Vec) scored through the one `evaluator` path against fodiwalk/deepwalk/node2vec. Report: `evaluator/reports/260922-other-methods-comparison.md`. Added citeseer to the dataset registry (`fodiwalk/make_graph/datasets.py`) and `--deg-source`/`--lr-decay` to `make_embedding.py`. Key caveat on the record: rho/hop-R2/recall@10 read Euclidean distance, so inner-product methods (LINE, factorization) score low there but keep LP AUC 0.99+ — read the column that matches the objective.
 
 ---
 session-id: fdmap-b3 [edf61e]

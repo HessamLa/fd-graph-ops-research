@@ -1,0 +1,99 @@
+{
+ "protocol": "fodiwalk_dist",
+ "dim": 128,
+ "node_numbering": "fodiwalk.make_graph.load (one order for every method)",
+ "seeds": [
+  42,
+  43,
+  44,
+  45,
+  46,
+  47,
+  48,
+  49,
+  50,
+  51,
+  52
+ ],
+ "eval_seed_note": "LP and hop-regression were scored at embed time with the EMBEDDING seed (stored in config.json); rho, recall@10 and community use a FIXED eval seed 42.",
+ "link_prediction": {
+  "max_pairs": 50000,
+  "test_size": 0.2,
+  "neg_ratio": 1.0,
+  "feature": "hadamard",
+  "model": "rf",
+  "n_estimators": 200,
+  "pos_draw": "over_cap",
+  "neg_draw": "far_pairs",
+  "train_test_split": "80%/20%",
+  "classifier": "random forest, 200 trees",
+  "features": "hadamard",
+  "negatives": "1.0:1 (balanced), drawn as far_pairs",
+  "positives": "graph edges, over_cap, capped at 50000",
+  "held_out": "NO -- the embedding saw every edge, so this is edge reconstruction, not held-out link prediction",
+  "scores": [
+   "accuracy",
+   "precision",
+   "recall",
+   "f1_score",
+   "auc"
+  ]
+ },
+ "hop_regression": {
+  "n_pairs": 20000,
+  "n_sources": 200,
+  "min_hop": 2,
+  "feature": "one scalar: euclidean distance in Z",
+  "metric": "euclidean",
+  "hops": "bfs",
+  "pair_draw": "bfs_rows",
+  "models": [
+   "baseline",
+   "rf",
+   "mlp"
+  ],
+  "test_size": 0.2,
+  "rf_estimators": 100,
+  "rf_min_leaf": 1,
+  "mlp_hidden": [
+   256,
+   128
+  ],
+  "mlp_early_stop": false,
+  "train_test_split": "80%/20%",
+  "pairs": "20000 from 200 BFS sources, min_hop 2, draw bfs_rows",
+  "target": "true BFS hop distance",
+  "reported_metric": "hop R2 = random forest R2 on the test split"
+ },
+ "spearman_rho": {
+  "definition": "Spearman between euclidean Z-distance and hop distance",
+  "pairs": "20000 from 200 BFS sources, min_hop 2 -- the SAME sample as hop_regression",
+  "eval_seed": 42
+ },
+ "recall_at_10": {
+  "definition": "share of a node's true neighbours among its 10 euclidean-nearest nodes",
+  "k": 10,
+  "queries": "every node of degree > 0",
+  "average": "micro, denominator sum(min(degree, 10))",
+  "knn": "exact brute-force (all graphs are below RECON_MAX_N=200000)",
+  "self_excluded": true
+ },
+ "community": {
+  "reference": "Louvain on A (networkx louvain_communities)",
+  "louvain_seed": 42,
+  "louvain_resolution": 1.0,
+  "louvain_k": {
+   "cora": 105,
+   "citeseer": 471,
+   "pubmed": 45
+  },
+  "clusters": "k-means on Z, k = Louvain community count",
+  "kmeans_n_init": 10,
+  "kmeans_random_state": 42,
+  "scores": [
+   "NMI (normalized_mutual_info_score)",
+   "ARI (adjusted_rand_score)"
+  ]
+ },
+ "machine": "8 cores, 7 GB RAM, no GPU used"
+}
