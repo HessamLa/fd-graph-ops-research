@@ -249,3 +249,4 @@ embeddings_auxdim.npz
 # .gitignore does not affect a file git already follows.
 papers/*.pdf
 papers/*.PDF
+agentic-log/
