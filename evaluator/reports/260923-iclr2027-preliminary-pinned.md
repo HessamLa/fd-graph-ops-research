@@ -1,3 +1,7 @@
+<!-- PINNED COPY. Frozen 2026-09-23T07:43Z from evaluator/reports/260917-iclr2027-preliminary.md. Do not regenerate this file:
+     the paper cites it. New numbers go to the live report.
+     Supersedes 260922-iclr2027-preliminary-pinned.md, which stays as cut. -->
+
 # ICLR 2027 runs: preliminary results
 
 **Built:** 2026-09-23T07:43Z. **Status:** preliminary. Runner has made 2385 run
