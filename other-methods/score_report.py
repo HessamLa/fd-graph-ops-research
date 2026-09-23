@@ -27,6 +27,7 @@ tables go to stdout.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections import defaultdict
 
@@ -116,19 +117,43 @@ def label_of(cfg):
 
 
 def score_dir(d):
+    """The seven report metrics for one run, cached in `<dir>/eval.json`.
+
+    rho, recall@10, NMI and ARI are expensive (brute kNN and k-means on the
+    whole graph), so they are computed ONCE and written next to `Z.npy` and
+    `config.json`. A later pass reads that file and skips the work -- the Z
+    never changes, so the cache never goes stale. LP AUC/f1 and hop R2 are
+    already in `config.json` (evaluator wrote them at embed time); they are
+    copied into `eval.json` so it holds all seven in one place.
+    """
     cfg = json.load(open(f"{d}/config.json"))
-    Z = np.load(f"{d}/Z.npy")
     g = cfg["dataset"]["name"]
     seed = cfg["run"]["seed"]
     method = label_of(cfg)
     m = cfg.get("metrics", {})
-    nmi, ari = community(g, Z, seed)
+    cache = os.path.join(d, "eval.json")
+    z_sha = cfg.get("outputs", {}).get("sha256")
+    e = None
+    if os.path.exists(cache):
+        e = json.load(open(cache))
+        if z_sha and e.get("z_sha256") not in (None, z_sha):
+            e = None                          # Z changed under the cache
+    if e is None:
+        Z = np.load(f"{d}/Z.npy")
+        nmi, ari = community(g, Z, seed)
+        e = {"rho": rho(g, Z, seed), "recall_at_10": recall_at_10(g, Z),
+             "nmi": nmi, "ari": ari,
+             "hop_r2": m.get("rf_r2", float("nan")),
+             "lp_auc": m.get("auc", float("nan")),
+             "lp_f1": m.get("f1_score", float("nan")),
+             "protocol": "fodiwalk_dist", "z_sha256": z_sha}
+        json.dump(e, open(cache, "w"), indent=1)
     return {"graph": g, "method": method, "seed": seed,
-            "rho": rho(g, Z, seed), "hop_r2": m.get("rf_r2", float("nan")),
-            "recall_at_10": recall_at_10(g, Z),
-            "lp_auc": m.get("auc", float("nan")),
-            "lp_f1": m.get("f1_score", float("nan")),
-            "nmi": nmi, "ari": ari,
+            "rho": e["rho"], "hop_r2": e.get("hop_r2", m.get("rf_r2", float("nan"))),
+            "recall_at_10": e["recall_at_10"],
+            "lp_auc": e.get("lp_auc", m.get("auc", float("nan"))),
+            "lp_f1": e.get("lp_f1", m.get("f1_score", float("nan"))),
+            "nmi": e["nmi"], "ari": e["ari"],
             "seconds": cfg.get("environment", {}).get("seconds", 0.0),
             "peak_rss_mb": cfg.get("environment", {}).get("peak_rss_mb", 0.0)}
 
