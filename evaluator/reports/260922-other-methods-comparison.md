@@ -63,6 +63,24 @@ well `dim=128` can hold the hop geometry, not a learned embedding.
 **LP AUC is saturated** (0.92–0.9997). Rank on geometry (rho, hop R2) and
 community (NMI, ARI), not on AUC.
 
+## 0. Evaluation parameters
+
+The full machine-readable set is `other-methods/results/eval_params.json`
+(and embedded in `comparison_tables_11seed.json` under `eval_params`).
+Pulled live from the `fodiwalk_dist` protocol, so it matches what ran.
+
+| experiment | setup |
+|---|---|
+| **link prediction** (LP AUC, f1) | 80/20 train/test; balanced negatives (`neg_ratio=1.0`) drawn as `far_pairs` (non-edges); positives = graph edges (`over_cap`), capped at 50,000; features = **hadamard**(Z_u, Z_v); classifier = **random forest, 200 trees**. NOT held-out — the embedding saw every edge, so this is edge reconstruction. |
+| **hop regression** (hop R2) | 20,000 pairs from **200 BFS sources**, `min_hop ≥ 2`; feature = one Euclidean distance in Z; target = true BFS hop; 80/20 split; models = mean-baseline / RF (100 trees, min_leaf 1) / MLP ([256,128], no early stop). `hop R2` = the RF R² on the test split. |
+| **Spearman rho** | Spearman of Euclidean Z-distance vs hop distance on the SAME 200-source / 20,000-pair / `min_hop ≥ 2` sample; fixed eval seed 42. |
+| **recall@10** | k = 10 nearest OTHER nodes per node of degree > 0, exact brute-force kNN, self excluded; micro average, denominator `sum(min(degree, 10))`. |
+| **community** (NMI, ARI) | reference = Louvain on A (networkx, seed 42, resolution 1.0 → k = 105 cora / 471 citeseer / 45 pubmed); clusters = k-means on Z at k = the Louvain count, `n_init=10`, `random_state=42`. |
+
+Common: dim 128, one node numbering (`fodiwalk.make_graph.load`). LP and hop
+regression were scored at embed time with the **embedding** seed (stored in
+`config.json`); rho, recall@10 and community use a **fixed** eval seed 42.
+
 ## 1. Main comparison, dim 128
 
 **cora, dim 128**

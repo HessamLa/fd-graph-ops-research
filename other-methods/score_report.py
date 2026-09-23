@@ -201,7 +201,11 @@ def main():
             rows.append(score_dir(d))
     md = tables(rows)
     if len(sys.argv) > 2:
-        json.dump(rows, open(sys.argv[2].replace(".md", ".json"), "w"), indent=2)
+        # include the evaluation parameters so the json is self-describing
+        pp = os.path.join(os.path.dirname(__file__), "results", "eval_params.json")
+        params = json.load(open(pp)) if os.path.exists(pp) else None
+        out = {"eval_params": params, "results": rows}
+        json.dump(out, open(sys.argv[2].replace(".md", ".json"), "w"), indent=2)
         open(sys.argv[2], "w").write(md)
         print(f"wrote {sys.argv[2]}", file=sys.stderr)
     print(md)
