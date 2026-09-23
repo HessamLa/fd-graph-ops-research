@@ -2172,6 +2172,20 @@
       "peak_rss_mb": 272.5
     },
     {
+      "graph": "citeseer",
+      "method": "force2vec",
+      "seed": 47,
+      "rho": 0.4760405663036758,
+      "hop_r2": -0.01370406403073976,
+      "recall_at_10": 0.823728813559322,
+      "lp_auc": 0.9885996550101929,
+      "lp_f1": 0.946236559139785,
+      "nmi": 0.877629142424915,
+      "ari": 0.5253738673137304,
+      "seconds": 1415.0,
+      "peak_rss_mb": 271.3
+    },
+    {
       "graph": "cora",
       "method": "fodiwalk fdhop walk_edges sqn",
       "seed": 42,
