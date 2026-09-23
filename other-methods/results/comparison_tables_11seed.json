@@ -4244,6 +4244,20 @@
       "peak_rss_mb": 270.9
     },
     {
+      "graph": "cora",
+      "method": "force2vec",
+      "seed": 49,
+      "rho": 0.5575487598482404,
+      "hop_r2": 0.06680713061197008,
+      "recall_at_10": 0.7508392782207302,
+      "lp_auc": 0.9754895367022497,
+      "lp_f1": 0.9279454722492697,
+      "nmi": 0.7779240971062003,
+      "ari": 0.503695368153652,
+      "seconds": 1008.7,
+      "peak_rss_mb": 270.4
+    },
+    {
       "graph": "pubmed",
       "method": "fodiwalk fdhop walk_edges sqn",
       "seed": 42,
