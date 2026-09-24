@@ -419,6 +419,378 @@ For method comparison fix BOTH `seed` and `rng` to an eval constant, or
 average over several eval seeds. `rng` drives the sample; `seed` drives the
 split, the forest and the MLP.
 
+## Fresh clone, environment rebuilt (2026-09-21)
+
+This working tree was freshly cloned with no `.venv` and no `data_cache/`.
+Rebuilt both, and ran the first `nbr_walk`+`fdhop` numbers on the three
+citation graphs.
+
+- `.venv/` recreated at repo root, Python 3.12. Installed
+  `evaluator/requirements-evaluator.txt` plus `pandas`, `gensim`, `jax`,
+  `jaxlib`, `pytest` (no root `requirements.txt` exists for `fodiwalk` or
+  `forcedirected`; versions were inferred from `import` statements). A GPU
+  is present (GTX 1060) but no CUDA jaxlib was installed — `jax.devices()`
+  falls back to CPU. Fine at this graph scale (seconds, not minutes).
+- Downloaded Cora and Pubmed from `linqs-data.soe.ucsc.edu` into
+  `data_cache/cora/` and `data_cache/pubmed/Pubmed-Diabetes/`, matching
+  the paths `fodiwalk/make_graph/datasets.py` already expected.
+- **Citeseer was NOT in the registry before this.** Added
+  `_edges_citeseer()` to `fodiwalk/make_graph/datasets.py` (not an
+  `evaluator/` file — touched it anyway since this was a fresh single-agent
+  session with no other live editor, and it was minimal + additive:
+  one function in the exact shape of `_edges_cora`, plus one line in
+  `read_edges`). Citeseer's ids are alphanumeric
+  (e.g. `bradshaw97introduction`), unlike Cora's plain integers, so the
+  loader reads `dtype="<U32"` and lets `to_csr`'s `np.unique` renumber it
+  — verified this works with no other change needed. Downloaded from the
+  same LINQS host into `data_cache/citeseer/`. **A session that owns
+  `fodiwalk/` should be told about this addition and fold it into their
+  own record.**
+- Loaded all three through `fodiwalk.make_graph.load` and got the
+  standard published sizes: cora 2,708n/5,278e (avg deg 3.90), citeseer
+  3,327n/4,552e (avg deg 2.74), pubmed 19,717n/44,324e (avg deg 4.50).
+
+**Results**, `experiments/embeddings/make_embedding.py --method fodiwalk
+--pairs nbr_walk --force fdhop --k4 1.0 --optim plain --weight min_gap
+--lr 0.999 --dim 128 --epochs 200 --seed 42 --device cpu --protocol
+fodiwalk_dist --score`. `k4=1.0` because the Config default (0.01) is
+"100x flatter" than what `fdhop` wants — the convention already on record
+in `make_embedding.py`'s own `--k4` help text and in
+`experiments/embeddings/RESULTS.md` (which has `fdhop` rows only under
+`walk_edges`, never `nbr_walk` — this is the first record of that
+combination).
+
+| graph | acc | f1 | auc | hop R2 (mlp, distance) | embed s | peak RSS |
+|---|---|---|---|---|---|---|
+| cora | 0.9934 | 0.9934 | 0.9996 | 0.3554 | 14.9 | 507 MB |
+| citeseer | 0.9956 | 0.9956 | 1.0000 | 0.1553 | 11.7 | 548 MB |
+| pubmed | 0.9920 | 0.9920 | 0.9993 | 0.3726 | 114.6 | 884 MB |
+
+Stored under `data_cache/embeddings/<graph>/128/<name>/{Z.npy,config.json}`:
+`cora/128/260921-060251-fodiwalk_precomp-0611c0e9`,
+`citeseer/128/260921-060317-fodiwalk_precomp-ab4767d8`,
+`pubmed/128/260921-060615-fodiwalk_precomp-c9933669`. Log:
+`experiments/embeddings/logs/nbr_walk_fdhop_20260921T060216Z.log`.
+
+Link prediction is near-ceiling on all three, as it is for every method on
+these graphs (see the `RESULTS.md` table for `walk_edges`/`fdlinear`
+rows). Hop R2 under `nbr_walk` (0.355 cora, 0.373 pubmed) reads lower than
+the recorded `walk_edges`+`fdhop` numbers for the same graphs (+0.7119
+cora, +0.6194 pubmed) — consistent with the existing note that `nbr_walk`
++ `fdlinear` also scored lower than `walk_edges` + `fdlinear` on cora
+(+0.2537 vs +0.7073 in `RESULTS.md`). Read as "the pairs policy matters
+more than which force law," not yet confirmed as a rule since this is one
+seed, no repeats.
+
+## walk_edges + fdhop, same three graphs (2026-09-21)
+
+Same day, follow-up run: `--pairs walk_edges` in place of `--pairs
+nbr_walk`, everything else identical (dim 128, epochs 200, k4=1.0, plain,
+min_gap, lr 0.999, seed 42, 10x20 walks, window 5, `fodiwalk_dist`).
+
+**Citeseer failed first, for a real reason, not a script bug.** `PlaneContractError`
+(I5, `fodiwalk/embed/plan_contract.py:189`): 48 rows held stored pairs at a
+true degree of 0. Citeseer genuinely has 48 isolated (degree-0) nodes after
+`_finish`/`to_csr` — verified directly (`np.diff(A.indptr) == 0`). The
+default `deg_source="auto"` counts `h==1` entries of `D` for the divisor,
+and the `far`-pairs sampler had picked some of those isolated nodes for a
+long-range pair anyway, so `D` held entries for a row that `A` says has no
+neighbours. Every force law would have silently frozen those 48 rows for
+the whole run — the guard exists exactly to catch that (I5) and it did.
+
+**Fix, not a workaround: `deg_source="A"`**, already a `Fodiwalk`/`Config`
+field (`fodiwalk/config.py:75`, `fodiwalk/embed/degrees.py`) but not wired
+through `experiments/embeddings/make_embedding.py`. Added `--deg-source
+{auto,D,A}` there (default `auto`, so cora/pubmed runs are unaffected) and
+reran citeseer with `--deg-source A`. Confirmed with a 5-epoch smoke test
+before the full run: `fw.diverged` False.
+
+Cora and pubmed did NOT need this — their `auto` degree source never hit
+a degree-0 row with a far pair. Whether they also have isolated nodes that
+simply weren't picked by the far sampler this seed is unchecked.
+
+| graph | acc | f1 | auc | hop R2 (mlp, distance) | embed s | note |
+|---|---|---|---|---|---|---|
+| cora | 0.9915 | 0.9915 | 0.9987 | 0.7080 | 11.2 | deg_source=auto |
+| citeseer | 0.9951 | 0.9951 | 0.9998 | 0.6076 | 11.0 | deg_source=A (required) |
+| pubmed | 0.9903 | 0.9903 | 0.9987 | 0.6315 | 57.7 | deg_source=auto |
+
+Stored: `cora/128/260921-061803-fodiwalk_precomp-d3731d64`,
+`citeseer/128/260921-062242-fodiwalk_precomp-76416b77`,
+`pubmed/128/260921-062036-fodiwalk_precomp-59d929c3`. Logs:
+`experiments/embeddings/logs/walk_edges_fdhop_20260921T061732Z.log` (cora,
+pubmed, and the citeseer failure) and
+`experiments/embeddings/logs/walk_edges_fdhop_citeseer_20260921T062217Z.log`
+(the citeseer rerun).
+
+Cora's number here (0.9915 acc, hop R2 0.7080) is close to but not
+identical to the recorded `RESULTS.md` row for the same nominal settings
+(0.9882, +0.7119) — within the measurement-variance band already on
+record above (`acc` SD ~5e-3, `r2_dist` SD ~2.9e-2 across eval seeds on
+cora), not a discrepancy to chase.
+
+**`walk_edges` clearly beats `nbr_walk` for `fdhop`'s hop R2 on all three
+graphs at these settings**: cora 0.708 vs 0.355, citeseer 0.608 vs 0.155,
+pubmed 0.632 vs 0.373. Same direction on every graph, one seed each — the
+next thing to check before calling it a rule is a second seed.
+
+## Optimizer arms: sqn/const vs nesterov/linear, 3 seeds (2026-09-21)
+
+`fdhop`, `walk_edges`, `min_gap`, 10x20 walks, dim 128, 200 epochs, `k4=1.0`,
+on cora/citeseer/pubmed, embedding seeds 42/43/44 (== eval seed each run,
+same convention as every run above). Not compared against the ICLR report
+on request — this is its own record, not a reproduction check.
+
+**`fodiwalk`'s own `Fodiwalk` class already had an `lr_decay` kwarg
+(`"const"`/`"linear"`, `fodiwalk/model.py:53`) that `make_embedding.py`
+never exposed.** Added `--lr-decay {const,linear}` there (default
+`const`, so every prior run in this file is unaffected). Also fixed a
+latent bug the same edit would otherwise have hidden: the script's own
+stored `cfg["optimizer"]["lr_decay"]` was HARDCODED to `"const"`
+regardless of what ran — a `linear` run would have recorded itself as
+`const` in its own `config.json`. Now reads `args.lr_decay`.
+
+`lr=0.099` for `nesterov` is not arbitrary: nesterov's steady-state gain
+is `1/(1-beta)` = 10 at the default `beta=0.9` (the effective-lr law on
+record above), so `0.099 x 10 ~= 0.99`, just under the stability edge and
+inside the user's global "never 1.0" rule.
+
+**Neither `Spearman rho` nor `recall@10` is an `evaluator` scorer.**
+`METROLOGY.md` s6.3 and s6.6 both still mark them PLANNED. Computed both
+standalone, script at
+`agentic-log/recall-and-rho/{extra_metrics.py,build_table.py}` (copy the
+scratch files there if this needs to be reusable; they ran from
+`/tmp/.../scratchpad/` this session and are not yet saved in-repo):
+
+- **rho**: Spearman of embedding distance against hop distance, hop >= 2,
+  sampled with `evaluator.pairs.pairs_for_hops` using
+  `evaluator.config.PROTOCOLS["fodiwalk_dist"].da` (200 BFS sources,
+  `bfs_rows` draw, `min_hop=2`) — the SAME pairs the protocol's own hop R2
+  scores, so the two columns describe one sample. Verified against the
+  ICLR report's own number on an unrelated run before this batch: cora
+  `walk_edges` seed 42 gave rho 0.8431, report says 0.843 +/- 0.006.
+- **recall@10**: MICRO-average, denominator `min(degree, 10)`
+  (`evaluator/reports/260904-store-scorecard.md:296` is the definition
+  actually used everywhere else in this repo, not the s6.3 macro
+  phrasing). A first attempt here used a per-node macro average and was
+  off by up to 0.10 on pubmed specifically, because pubmed has far more
+  high-degree hubs than cora/citeseer (11.8% of nodes above degree 10, vs
+  3.5% and 2.4%) and the two averages diverge exactly where hubs are
+  common. Caught by checking against the report; do not repeat the macro
+  version.
+- **`evaluator.config.PROTOCOLS[name]` is NOT a positional 2-tuple
+  any more.** The "H3 / positional 2-tuple, indexed [0]/[1]" fact
+  recorded above (2026-08-26) is stale: it is now a `Protocol` dataclass
+  with named fields `lp, da, dr, ds, rt, lr, st, sb` — `.da` works,
+  `[1]` raises `TypeError: no len()`. Something already fixed this since
+  August; nobody updated this file. Trust the dataclass fields, not the
+  old note.
+
+**Results**, mean +/- population std over 3 seeds:
+
+| graph | optimizer | Spearman rho | hop R2 (rf) | recall@10 | LP AUC | LP f1_score |
+|---|---|---|---|---|---|---|
+| cora | sqn/const/lr=0.999 | 0.8656 ± 0.0016 | 0.6503 ± 0.0191 | 0.9573 ± 0.0020 | 0.9992 ± 0.0002 | 0.9891 ± 0.0022 |
+| cora | nesterov/linear/lr=0.099 | 0.8061 ± 0.0075 | 0.4964 ± 0.0319 | 0.9650 ± 0.0015 | 0.9989 ± 0.0003 | 0.9877 ± 0.0018 |
+| citeseer | sqn/const/lr=0.999 | 0.8280 ± 0.0136 | 0.5701 ± 0.0433 | 0.9629 ± 0.0014 | 0.9996 ± 0.0005 | 0.9969 ± 0.0019 |
+| citeseer | nesterov/linear/lr=0.099 | 0.6961 ± 0.0030 | 0.3345 ± 0.0179 | 0.9666 ± 0.0017 | 0.9998 ± 0.0002 | 0.9973 ± 0.0009 |
+| pubmed | sqn/const/lr=0.999 | 0.7933 ± 0.0125 | 0.4811 ± 0.0395 | 0.7763 ± 0.0027 | 0.9989 ± 0.0002 | 0.9916 ± 0.0010 |
+| pubmed | nesterov/linear/lr=0.099 | 0.7670 ± 0.0140 | 0.4486 ± 0.0216 | 0.8075 ± 0.0015 | 0.9989 ± 0.0001 | 0.9901 ± 0.0001 |
+
+`sqn/const` beats `nesterov/linear` on rho and hop R2 on all three
+graphs, sometimes by a wide margin (hop R2 +0.155 cora, +0.236 citeseer,
++0.033 pubmed) — consistent with the standing optimiser verdict on record
+above (`plain`, lr 0.999, constant beats linear decay). `nesterov/linear`
+wins recall@10 on all three graphs instead, same split seen in the
+`nbr_walk` vs `walk_edges` comparison above: geometry-preserving metrics
+(rho, hop R2) and neighbour-retrieval metrics (recall@10) do not move
+together here, and LP AUC/f1 barely move at all (both saturated near
+0.999, as documented in every report in this directory).
+
+Raw per-run rows: `agentic-log/recall-and-rho/opt_arms_dirs.scored.json`
+copy this from `/tmp/.../scratchpad/` if kept. 18 embeddings, logs at
+`experiments/embeddings/logs/opt_arms_20260921T081724Z.log`. Citeseer used
+`--deg-source A` in every arm (I5 guard, see the entry above); cora and
+pubmed used the `auto` default.
+
+## Community structure (NMI/ARI), added to the optimizer-arm batch (2026-09-21)
+
+Same 18 stored runs as the entry above. Added the other metric `STCfg`
+names (`evaluator/config.py:285`) and `METROLOGY.md` s6.6 marks PLANNED:
+Louvain on `A` against k-means on `Z`, `k` = the community count Louvain
+found, NMI and ARI between the two label sets
+(`papers/ordered-rank-criteria.md:159` is the definition followed).
+
+**Used `networkx.algorithms.community.louvain_communities`, on direct
+instruction.** This repo's own convention is the opposite:
+`papers/metrology-orchestration.md:425` and `PRD-v2.md:175` both say
+"must not" use `networkx` or `python-louvain` for community detection,
+because `networkx`'s pure-Python Louvain does not scale to this repo's
+million-node graphs -- NetworKit `community.PLM` is the intended path,
+per `COMMUNITY_DEFAULT` in `evaluator/config.py:191`. cora/citeseer/pubmed
+top out at 19,717 nodes, well inside where that concern applies, so this
+does not contradict the reason for the rule, only the letter of it.
+**`networkx` is NOT added to `evaluator/requirements-evaluator.txt`** --
+it is `pip install`ed into `.venv` for this standalone script only, not a
+dependency of the package. A future task at NetworKit-only scale should
+not copy this choice without re-reading why the rule exists.
+
+Louvain ran ONCE per graph at a fixed seed (42) -- it is a graph property,
+independent of any embedding -- so all six runs of one graph compare
+against the SAME reference partition. k-means ran once per embedding, at
+that embedding's own seed, `n_clusters` = the Louvain count. Script:
+`agentic-log/recall-and-rho/community_nmi.py`.
+
+Louvain found 105 communities on cora, 471 on citeseer, 45 on pubmed
+(seed 42, default resolution 1.0). These are STRUCTURAL communities, not
+the 6/7/3 label classes cora/citeseer/pubmed are usually cited for --
+Louvain over-splits relative to the topic labels, as it does on every
+citation graph. Do not read `louvain_k` as a class count.
+
+| graph | optimizer | Louvain k | NMI | ARI |
+|---|---|---|---|---|
+| cora | sqn/const | 105 | 0.6992 ± 0.0037 | 0.3409 ± 0.0122 |
+| cora | nesterov/linear | 105 | 0.7056 ± 0.0071 | 0.3509 ± 0.0151 |
+| citeseer | sqn/const | 471 | 0.8671 ± 0.0028 | 0.3390 ± 0.0163 |
+| citeseer | nesterov/linear | 471 | 0.8639 ± 0.0059 | 0.3298 ± 0.0255 |
+| pubmed | sqn/const | 45 | 0.5829 ± 0.0012 | 0.3514 ± 0.0040 |
+| pubmed | nesterov/linear | 45 | 0.5960 ± 0.0033 | 0.3776 ± 0.0106 |
+
+Unlike rho/hop R2 (where `sqn/const` clearly wins on all three graphs),
+**NMI and ARI show almost no separation between the two optimizer arms**
+-- every gap here is within about 1-2 combined seed SDs. Community
+structure in `Z` looks like it depends far more on the walk/force/pairs
+choice than on which of these two optimizers ran it. Citeseer's NMI
+(0.86+) is much higher than cora's (0.70) or pubmed's (0.58); ARI tells a
+flatter story (0.33-0.38 everywhere) -- NMI and ARI are not just two
+views of the same number here, and citeseer's high NMI with an ARI no
+better than the other two graphs is worth a second look before reading
+"citeseer preserves community structure best" out of the NMI column
+alone.
+
+Combined per-run rows (rho, hop R2, recall@10, LP AUC/f1, NMI, ARI, all
+18 runs): `agentic-log/recall-and-rho/opt_arms_full.json`.
+
+## Other-methods comparison, branch `other-comparisons` (2026-09-22)
+
+Nine published comparison methods vs fodiwalk/deepwalk/node2vec on
+cora/citeseer/pubmed, dim 128. Report:
+`evaluator/reports/260922-other-methods-comparison.md`. Code:
+`other-methods/`. All committed on branch `other-comparisons` (branched
+off `explore/seed-variance`; NOT merged). Scaffold commit `0c91149`.
+
+**Architecture that kept it orthogonal and mergeable:**
+- Every method writes the SHARED store through
+  `other-methods/common/store.py`, scored by the one `evaluator` path
+  (protocol `fodiwalk_dist`, `lp_max_pairs=50_000`) with the SAME node
+  numbering (`fodiwalk.make_graph.load`). So a new number compares to a
+  fodiwalk number with no adjustment.
+- `other-methods/score_report.py` reads the store and prints the seven
+  columns (rho, hop R2, recall@10, LP AUC/f1, NMI, ARI), recomputing rho
+  and recall@10 and community the same way the scripts above do.
+- `other-methods/assemble_runlist.py` merges the new-method runs with the
+  deepwalk / node2vec / best-fodiwalk anchors, dedups (graph,label,seed).
+
+**Environment traps, each cost time:**
+- **The box shrank to 7 GB RAM** (the ICLR report assumed 15 GB). Forced:
+  dense n×n methods (NetMF, GraRep, HOPE) on cora/citeseer only — pubmed
+  OOMs (~3 GB per n×n at 19,717 nodes); Force2Vec base (O(n²)) skips
+  pubmed. All recorded, never dropped.
+- **karateclub pins an ancient numpy** that will not build on Python 3.12.
+  Fix: isolated `other-methods/karateclub/.venv-karate`, install a modern
+  stack then `karateclub` + `nodevectors` with `--no-deps`. That venv has
+  no jax, and `fodiwalk.make_graph.load` imports jax, so the karate step
+  reads a pre-saved `A.npz` (dumped by the shared venv in fodiwalk
+  numbering) instead of importing fodiwalk. Both venvs gitignored.
+- **sklearn `SpectralEmbedding` (arpack) HANGS on these disconnected
+  graphs.** citeseer (48 isolated nodes -> high-multiplicity zero
+  eigenvalues) ran 30 min and hit the timeout. Shift-invert at sigma=0
+  fails ("Factor is exactly singular"). Switched Laplacian Eigenmaps to
+  `karateclub.LaplacianEigenmaps` — citeseer 2 s, pubmed 30 s, robust. It
+  is also published, so it fits the doc's "use published code" rule better.
+  `other-methods/laplacian_eigenmaps/run.py` (the sklearn one) is kept but
+  superseded.
+- **Force2Vec node alignment.** The HipGraph/Force2Vec C++ binary reads a
+  `.mtx` with its own node ids. The wrapper builds the `.mtx` FROM the
+  fodiwalk adjacency (1-indexed) and reads the `.embd` back into
+  `Z[id-1]`, so it stays aligned. Feeding the repo's bundled `cora.mtx`
+  would embed a DIFFERENT numbering and every score would be silently
+  wrong. Binary has no seed flag -> Force2Vec rows are single-run.
+
+**THE RESULT CAVEAT that decides the ranking, must be stated with any
+quote of this table:** rho / hop R2 / recall@10 read EUCLIDEAN distance in
+Z. LINE, GraRep, NetMF, HOPE and ProNE learn an INNER-PRODUCT similarity,
+not a metric space, so they score near-zero or NEGATIVE rho while keeping
+LP AUC 0.99+. That is expected, not a defect; read their LP/community
+columns, not the Euclidean ones. `landmark_mds` reads the TRUE
+shortest-path distances -> it is a distance-oracle REFERENCE, not a learned
+competitor.
+
+**Headline (learned methods, distance geometry):** fodiwalk leads rho on
+cora (0.866 vs deepwalk 0.788) and pubmed (0.793 vs 0.699). On citeseer
+(sparsest, avg deg 2.74) landmark MDS passes it (0.955 vs 0.828). tForce2Vec
+is the best Force2Vec option (rho 0.717 cora) and has the BEST community
+NMI/ARI of all methods. Full numbers in the report.
+
+## The paused pubmed baseline runs finished themselves (2026-09-22)
+
+Left 4 runs paused (pubmed `deepwalk` seed=44, pubmed `node2vec` seeds
+42/43/44) to free memory for another task, at the user's request. By the
+time a scheduled restart fired, the working tree had moved to branch
+`other-comparisons` (checked out from outside this session, mid-wait) and
+all 4 were already done -- a parallel effort building
+`other-methods/` had generated them as part of a 9-published-method
+comparison (`evaluator/reports/260922-other-methods-comparison.md`),
+reusing this session's own stored fodiwalk `sqn/const` anchors and
+scoring methodology (`assemble_runlist.py` explicitly merges new-method
+runs with "the deepwalk / node2vec / best-fodiwalk anchors, dedups
+(graph,label,seed)"). Verified by diffing `other-methods/results/
+final_runlist.txt` against `data_cache/embeddings/pubmed/128/`: all 6
+dirs present, no redo needed.
+
+**Lesson: check `git branch`/`git log` and the shared `data_cache/embeddings/`
+store before resuming a paused multi-hour batch**, especially after a long
+wait -- another session can extend the same shared store in the meantime,
+and re-running is pure waste on jobs this slow (pubmed `deepwalk` alone is
+~33 min, see runtime table in the report above).
+
+**`evaluator/` is in git now.** Commits on record: `bcc7c20` "evaluator:
+preliminary ICLR 2027 results table", `5b8644d` "evaluator: matched-budget
+baselines, and a correction", plus the `other-comparisons` scaffold/results
+commits `0c91149`/`72b56e4`. The "Nothing is in git" line under Status
+above (2026-08-26) is STALE -- some session committed it since. Confirm
+with `git log --oneline -- evaluator/` before repeating that claim.
+
+**Combined table, this session's fdhop arms + the report's deepwalk/node2vec**
+(same protocol, same store, 3 seeds each, mean ± std):
+
+| graph | method | rho | hop R2 | recall@10 | LP AUC | LP f1 | NMI | ARI |
+|---|---|---|---|---|---|---|---|---|
+| cora | fdhop sqn/const | 0.8656±0.0016 | 0.6503±0.0191 | 0.9573±0.0020 | 0.9992±0.0002 | 0.9891±0.0022 | 0.6992±0.0037 | 0.3409±0.0122 |
+| cora | fdhop nesterov/linear | 0.8061±0.0075 | 0.4964±0.0319 | 0.9650±0.0015 | 0.9989±0.0003 | 0.9877±0.0018 | 0.7056±0.0071 | 0.3509±0.0151 |
+| cora | deepwalk | 0.7879±0.0078 | 0.4946±0.0248 | 0.9353±0.0012 | 0.9981±0.0009 | 0.9815±0.0043 | 0.7057±0.0081 | 0.3180±0.0174 |
+| cora | node2vec | 0.7564±0.0099 | 0.2938±0.0210 | 0.9579±0.0008 | 0.9978±0.0012 | 0.9777±0.0059 | 0.6935±0.0030 | 0.2492±0.0096 |
+| citeseer | fdhop sqn/const | 0.8280±0.0136 | 0.5701±0.0433 | 0.9629±0.0014 | 0.9996±0.0005 | 0.9969±0.0019 | 0.8671±0.0028 | 0.3390±0.0163 |
+| citeseer | fdhop nesterov/linear | 0.6961±0.0030 | 0.3345±0.0179 | 0.9666±0.0017 | 0.9998±0.0002 | 0.9973±0.0009 | 0.8639±0.0059 | 0.3298±0.0255 |
+| citeseer | deepwalk | 0.6860±0.0006 | 0.3148±0.0401 | 0.9415±0.0010 | 0.9995±0.0004 | 0.9919±0.0011 | 0.8117±0.0014 | 0.1451±0.0061 |
+| citeseer | node2vec | 0.6871±0.0096 | 0.2931±0.0313 | 0.9380±0.0035 | 0.9986±0.0008 | 0.9884±0.0018 | 0.8060±0.0042 | 0.1429±0.0057 |
+| pubmed | fdhop sqn/const | 0.7933±0.0125 | 0.4811±0.0395 | 0.7763±0.0027 | 0.9989±0.0002 | 0.9916±0.0010 | 0.5829±0.0012 | 0.3514±0.0040 |
+| pubmed | fdhop nesterov/linear | 0.7670±0.0140 | 0.4486±0.0216 | 0.8075±0.0015 | 0.9989±0.0001 | 0.9901±0.0001 | 0.5960±0.0033 | 0.3776±0.0106 |
+| pubmed | deepwalk | 0.6990±0.0045 | 0.3208±0.0154 | 0.7978±0.0011 | 0.9989±0.0001 | 0.9847±0.0011 | 0.6276±0.0087 | 0.4431±0.0187 |
+| pubmed | node2vec | 0.6788±0.0098 | 0.2444±0.0440 | 0.9184±0.0003 | 0.9990±0.0002 | 0.9860±0.0007 | 0.6148±0.0045 | 0.3738±0.0185 |
+
+**fdhop `sqn/const` beats both deepwalk and node2vec on rho and hop R2 on
+all three graphs.** `nesterov/linear` still beats both baselines on rho
+everywhere and on hop R2 everywhere except citeseer, where node2vec/
+deepwalk's own hop R2 (0.29-0.31) is close to `nesterov/linear`'s (0.33).
+recall@10 and NMI are more mixed: node2vec/deepwalk lead fdhop on cora
+recall@10, and community NMI is close across all four methods on cora and
+citeseer (0.69-0.71). See the wider report for 9 more published methods
+(ProNE, NetMF, LINE, HOPE, GraRep, RandNE, Laplacian Eigenmaps, Force2Vec
+family, landmark MDS) -- caveat: five of them optimise inner-product
+similarity, not Euclidean distance, so they score near-zero or negative
+rho by design; read their LP/community columns instead, not rho/hop R2.
+
 ## Known-bad script patterns (each cost a run)
 
 - `hop_sample` in the frozen reference returns **four** values

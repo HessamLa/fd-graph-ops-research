@@ -1,0 +1,16 @@
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-155721-tforce2vec-34c8983b
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-155750-tforce2vec-28b4cc9f
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-155808-tforce2vec-7e799dfc
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-155825-tforce2vec-1614534c
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/pubmed/128/260922-160039-tforce2vec-ffeeb49d
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/pubmed/128/260922-160351-tforce2vec-1f84ba4b
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-160436-rforce2vec-d5a2f660
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-160505-rforce2vec-40efad8e
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-160532-rforce2vec-1422a693
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-160556-rforce2vec-cb0fe14c
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/pubmed/128/260922-160830-rforce2vec-8a941b2d
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/pubmed/128/260922-161443-rforce2vec-47a6f818
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-164343-force2vec-e7764249
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/cora/128/260922-170527-force2vec-0b7bc3a9
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-173349-force2vec-fe3a477c
+/home/h/gm/fd-graph-ops-research/] stored data_cache/embeddings/citeseer/128/260922-175934-force2vec-f533899e
