@@ -664,6 +664,65 @@ cora (0.866 vs deepwalk 0.788) and pubmed (0.793 vs 0.699). On citeseer
 is the best Force2Vec option (rho 0.717 cora) and has the BEST community
 NMI/ARI of all methods. Full numbers in the report.
 
+## The paused pubmed baseline runs finished themselves (2026-09-22)
+
+Left 4 runs paused (pubmed `deepwalk` seed=44, pubmed `node2vec` seeds
+42/43/44) to free memory for another task, at the user's request. By the
+time a scheduled restart fired, the working tree had moved to branch
+`other-comparisons` (checked out from outside this session, mid-wait) and
+all 4 were already done -- a parallel effort building
+`other-methods/` had generated them as part of a 9-published-method
+comparison (`evaluator/reports/260922-other-methods-comparison.md`),
+reusing this session's own stored fodiwalk `sqn/const` anchors and
+scoring methodology (`assemble_runlist.py` explicitly merges new-method
+runs with "the deepwalk / node2vec / best-fodiwalk anchors, dedups
+(graph,label,seed)"). Verified by diffing `other-methods/results/
+final_runlist.txt` against `data_cache/embeddings/pubmed/128/`: all 6
+dirs present, no redo needed.
+
+**Lesson: check `git branch`/`git log` and the shared `data_cache/embeddings/`
+store before resuming a paused multi-hour batch**, especially after a long
+wait -- another session can extend the same shared store in the meantime,
+and re-running is pure waste on jobs this slow (pubmed `deepwalk` alone is
+~33 min, see runtime table in the report above).
+
+**`evaluator/` is in git now.** Commits on record: `bcc7c20` "evaluator:
+preliminary ICLR 2027 results table", `5b8644d` "evaluator: matched-budget
+baselines, and a correction", plus the `other-comparisons` scaffold/results
+commits `0c91149`/`72b56e4`. The "Nothing is in git" line under Status
+above (2026-08-26) is STALE -- some session committed it since. Confirm
+with `git log --oneline -- evaluator/` before repeating that claim.
+
+**Combined table, this session's fdhop arms + the report's deepwalk/node2vec**
+(same protocol, same store, 3 seeds each, mean ± std):
+
+| graph | method | rho | hop R2 | recall@10 | LP AUC | LP f1 | NMI | ARI |
+|---|---|---|---|---|---|---|---|---|
+| cora | fdhop sqn/const | 0.8656±0.0016 | 0.6503±0.0191 | 0.9573±0.0020 | 0.9992±0.0002 | 0.9891±0.0022 | 0.6992±0.0037 | 0.3409±0.0122 |
+| cora | fdhop nesterov/linear | 0.8061±0.0075 | 0.4964±0.0319 | 0.9650±0.0015 | 0.9989±0.0003 | 0.9877±0.0018 | 0.7056±0.0071 | 0.3509±0.0151 |
+| cora | deepwalk | 0.7879±0.0078 | 0.4946±0.0248 | 0.9353±0.0012 | 0.9981±0.0009 | 0.9815±0.0043 | 0.7057±0.0081 | 0.3180±0.0174 |
+| cora | node2vec | 0.7564±0.0099 | 0.2938±0.0210 | 0.9579±0.0008 | 0.9978±0.0012 | 0.9777±0.0059 | 0.6935±0.0030 | 0.2492±0.0096 |
+| citeseer | fdhop sqn/const | 0.8280±0.0136 | 0.5701±0.0433 | 0.9629±0.0014 | 0.9996±0.0005 | 0.9969±0.0019 | 0.8671±0.0028 | 0.3390±0.0163 |
+| citeseer | fdhop nesterov/linear | 0.6961±0.0030 | 0.3345±0.0179 | 0.9666±0.0017 | 0.9998±0.0002 | 0.9973±0.0009 | 0.8639±0.0059 | 0.3298±0.0255 |
+| citeseer | deepwalk | 0.6860±0.0006 | 0.3148±0.0401 | 0.9415±0.0010 | 0.9995±0.0004 | 0.9919±0.0011 | 0.8117±0.0014 | 0.1451±0.0061 |
+| citeseer | node2vec | 0.6871±0.0096 | 0.2931±0.0313 | 0.9380±0.0035 | 0.9986±0.0008 | 0.9884±0.0018 | 0.8060±0.0042 | 0.1429±0.0057 |
+| pubmed | fdhop sqn/const | 0.7933±0.0125 | 0.4811±0.0395 | 0.7763±0.0027 | 0.9989±0.0002 | 0.9916±0.0010 | 0.5829±0.0012 | 0.3514±0.0040 |
+| pubmed | fdhop nesterov/linear | 0.7670±0.0140 | 0.4486±0.0216 | 0.8075±0.0015 | 0.9989±0.0001 | 0.9901±0.0001 | 0.5960±0.0033 | 0.3776±0.0106 |
+| pubmed | deepwalk | 0.6990±0.0045 | 0.3208±0.0154 | 0.7978±0.0011 | 0.9989±0.0001 | 0.9847±0.0011 | 0.6276±0.0087 | 0.4431±0.0187 |
+| pubmed | node2vec | 0.6788±0.0098 | 0.2444±0.0440 | 0.9184±0.0003 | 0.9990±0.0002 | 0.9860±0.0007 | 0.6148±0.0045 | 0.3738±0.0185 |
+
+**fdhop `sqn/const` beats both deepwalk and node2vec on rho and hop R2 on
+all three graphs.** `nesterov/linear` still beats both baselines on rho
+everywhere and on hop R2 everywhere except citeseer, where node2vec/
+deepwalk's own hop R2 (0.29-0.31) is close to `nesterov/linear`'s (0.33).
+recall@10 and NMI are more mixed: node2vec/deepwalk lead fdhop on cora
+recall@10, and community NMI is close across all four methods on cora and
+citeseer (0.69-0.71). See the wider report for 9 more published methods
+(ProNE, NetMF, LINE, HOPE, GraRep, RandNE, Laplacian Eigenmaps, Force2Vec
+family, landmark MDS) -- caveat: five of them optimise inner-product
+similarity, not Euclidean distance, so they score near-zero or negative
+rho by design; read their LP/community columns instead, not rho/hop R2.
+
 ## Known-bad script patterns (each cost a run)
 
 - `hop_sample` in the frozen reference returns **four** values
